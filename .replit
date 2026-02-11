@@ -21,11 +21,11 @@ deploymentTarget = "cloudrun"
 expertMode = true
 
 [[ports]]
-localPort = 8000
+localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 5000
+localPort = 8000
 externalPort = 80
 
 [workflows]
@@ -51,3 +51,8 @@ waitForPort = 5000
 
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[userenv]
+
+[userenv.shared]
+REPLIT_APP_NAME = "anime-cards-bot"
