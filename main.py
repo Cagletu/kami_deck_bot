@@ -101,7 +101,7 @@ class Card(Base):
     __tablename__ = "cards"
 
     id = Column(Integer, primary_key=True)
-    name = Column(String, nullable=False)
+    card_name = Column(String, nullable=False)
     rarity = Column(String, nullable=False)  # E, D, C, B, A, S, SS, SSS
     original_url = Column(String, nullable=False)  # ссылка на webp
 
@@ -324,7 +324,7 @@ async def open_pack(message: types.Message):
             await message.answer("❌ Недостаточно монет")
             return
 
-        user.coins += pack_price  # снимаем монеты
+        user.coins -= pack_price  # снимаем монеты
 
         # Подбор случайной редкости
         rarity = roll_rarity()
@@ -347,12 +347,9 @@ async def open_pack(message: types.Message):
             card_id=won_card.id
         )
         session.add(user_card)
+        user.cards_opened += 1  # увеличиваем счетчик карт
         await session.commit()
         await session.refresh(user_card)
-
-        # Обновляем счетчик открытых карт
-        user.cards_opened += 1
-        await session.commit()
 
         # Формируем подпись для карты
         caption = (
