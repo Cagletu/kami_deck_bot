@@ -1,0 +1,21 @@
+# Основные
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-dotenv==1.0.0
+pydantic-settings==2.1.0
+
+# База данных
+sqlalchemy==2.0.23
+asyncpg==0.29.0
+alembic==1.12.1
+
+# Telegram бот
+aiogram==3.5.0
+
+# Утилиты
+httpx==0.25.1
+aiohttp==3.9.1
+
+# Для разработки (опционально)
+python-multipart==0.0.6
+requests
