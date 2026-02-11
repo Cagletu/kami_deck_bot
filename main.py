@@ -1,4 +1,5 @@
 import os
+import random
 import logging
 import asyncio
 from datetime import datetime, timedelta
@@ -9,8 +10,8 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic_settings import BaseSettings
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlalchemy.orm import declarative_base
-from sqlalchemy import Column, Integer, String, BigInteger, DateTime, JSON, Boolean, select
+from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy import Column, Integer, String, BigInteger, DateTime, JSON, Boolean, select, ForeignKey
 from aiogram import Bot, Dispatcher, types, Router
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import Update
@@ -63,7 +64,7 @@ class User(Base):
     language = Column(String, default="ru")
 
     # Основная валюта
-    coins = Column(Integer, default=500)
+    coins = Column(Integer, default=50000)
     dust = Column(Integer, default=0)  # Пыль за распыление
 
     # Прогресс
@@ -95,6 +96,48 @@ class User(Base):
     last_active = Column(DateTime, server_default=func.now())
     last_daily_tasks = Column(DateTime, nullable=True)  # Когда брал дневные задания
 
+
+class Card(Base):
+    __tablename__ = "cards"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    rarity = Column(String, nullable=False)  # E, D, C, B, A, S, SS, SSS
+    original_url = Column(String, nullable=False)  # ссылка на webp
+
+
+class UserCard(Base):
+    __tablename__ = "user_cards"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(BigInteger, ForeignKey("users.telegram_id"))
+    card_id = Column(Integer, ForeignKey("cards.id"))
+
+    user = relationship("User")
+    card = relationship("Card")
+
+
+# =========================
+# RARITY SYSTEM
+# =========================
+
+RARITY_WEIGHTS = {
+    "E": 40,
+    "D": 25,
+    "C": 15,
+    "B": 8,
+    "A": 6,
+    "S": 3,
+    "SS": 2,
+    "SSS": 1
+}
+
+
+
+def roll_rarity():
+    rarities = list(RARITY_WEIGHTS.keys())
+    weights = list(RARITY_WEIGHTS.values())
+    return random.choices(rarities, weights=weights, k=1)[0]
 
 # ===== TELEGRAM БОТ =====
 bot = Bot(token=settings.TELEGRAM_BOT_TOKEN,
@@ -264,29 +307,59 @@ E: <code>{user.cards_opened}</code> карт
     await message.answer(collection_text)
 
 
-@main_router.message(Command("open_pack"))
-async def cmd_open_pack(message: types.Message):
-    """Открыть пачку карт"""
-    user = await get_user_or_create(message.from_user.id)
-
-    pack_price = 100
-    if user.coins < pack_price:
-        await message.answer(f"❌ Не хватает монет!\n"
-                             f"Нужно: <code>{pack_price}</code>\n"
-                             f"У вас: <code>{user.coins}</code>\n\n"
-                             f"💡 Получите монеты через /daily")
-        return
-
-    # Обновляем пользователя
+@main_router.message(Command("open"))
+async def open_pack(message: types.Message):
     async with AsyncSessionLocal() as session:
-        db_user = await session.get(User, user.id)
-        db_user.coins -= pack_price
-        db_user.cards_opened += 3  # 3 карты в пачке
+        result = await session.execute(
+            select(User).where(User.telegram_id == message.from_user.id)
+        )
+        user = result.scalar_one_or_none()
 
-        # TODO: Реальное добавление карт из БД cards
-        # Пока просто увеличиваем счетчик
+        if not user:
+            await message.answer("Сначала напиши /start")
+            return
 
+        pack_price = 100
+
+        if user.coins < pack_price:
+            await message.answer("❌ Недостаточно монет")
+            return
+
+        user.coins -= pack_price
+
+        rarity = roll_rarity()
+
+        result = await session.execute(
+            select(Card).where(Card.rarity == rarity)
+        )
+        cards = result.scalars().all()
+
+        if not cards:
+            await message.answer(f"Нет карт редкости {rarity} в базе")
+            return
+
+        won_card = random.choice(cards)
+
+        user_card = UserCard(
+            user_id=user.telegram_id,
+            card_id=won_card.id
+        )
+
+        session.add(user_card)
         await session.commit()
+
+        caption = (
+            f"🎉 Тебе выпала карта!\n\n"
+            f"✨ {won_card.name}\n"
+            f"⭐ Редкость: {won_card.rarity}\n\n"
+            f"💰 Осталось монет: {user.coins}"
+        )
+
+        # Отправка webp по original_url
+        await message.answer_photo(
+            photo=won_card.original_url,
+            caption=caption
+        )
 
     pack_text = f"""
 <b>📦 ВЫ ОТКРЫЛИ ПАЧКУ КАРТ!</b>
