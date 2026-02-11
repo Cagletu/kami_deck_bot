@@ -393,37 +393,20 @@ dp.include_router(main_router)
 
 
 # ===== FASTAPI ПРИЛОЖЕНИЕ =====
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Запуск при старте приложения"""
-    # Создаем таблицы если их нет
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    # Настраиваем вебхук для Replit
-    # if settings.REPLIT_APP_NAME:
-        # webhook_url = f"https://{settings.REPLIT_APP_NAME}.replit.dev/webhook"
-
-    try:
-        await bot.delete_webhook(drop_pending_updates=True)
-        await bot.set_webhook(
-            url=settings.WEBHOOK_URL,
-            secret_token=settings.TELEGRAM_WEBHOOK_SECRET,
-            drop_pending_updates=True)
-        logger.info(f"✅ Вебхук установлен: {settings.WEBHOOK_URL}")
-    except Exception as e:
-        logger.error(f"❌ Ошибка вебхука: {e}")
-
-    yield
-
-    # Очистка при остановке
-    await bot.session.close()
+# @asynccontextmanager
+# async def lifespan(app: FastAPI):
+#     # Инициализация базы
+#     async with engine.begin() as conn:
+#         await conn.run_sync(Base.metadata.create_all)
+        
+#     yield # Закрытие соединений
+    
+#     await engine.dispose()
 
 
 app = FastAPI(title="Anime Cards Game Bot",
               description="Игровой карточный бот для Telegram",
-              version="1.0.0",
-              lifespan=lifespan)
+              version="1.0.0")
 
 
 # ===== ЭНДПОИНТЫ =====
