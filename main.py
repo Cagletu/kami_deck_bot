@@ -161,7 +161,7 @@ async def cmd_start(message: types.Message):
 👤 Уровень: <code>{user.level}</code>
 💰 Монеты: <code>{user.coins}</code>
 ✨ Пыль: <code>{user.dust}</code>
-🃏 Карточек: <code>{user.collection_size}</code>
+🃏 Карточек: <code>{user.cards_opened}</code>
 
 <b>🏆 Статистика:</b>
 ⚔️ Рейтинг: <code>{user.arena_rating}</code>
@@ -214,7 +214,7 @@ ID: <code>{user.id}</code>
 Слотов экспедиций: <code>{user.expeditions_slots}</code>
 
 <b>🏆 Статистика:</b>
-Карт в коллекции: <code>{user.collection_size}</code>
+Карт в коллекции: <code>{user.cards_opened}</code>
 Побед: <code>{user.arena_wins}</code>
 Поражений: <code>{user.arena_losses}</code>
 Винрейт: <code>{win_rate:.1f}%</code>
@@ -242,7 +242,7 @@ async def cmd_collection(message: types.Message):
     collection_text = f"""
 <b>🃏 КОЛЛЕКЦИЯ КАРТ</b>
 
-Всего карт: <code>{user.collection_size}</code>
+Всего карт: <code>{user.cards_opened}</code>
 
 <b>📊 По редкостям (пример):</b>
 SSS: <code>0</code> карт
@@ -251,7 +251,7 @@ A: <code>0</code> карт
 B: <code>0</code> карт
 C: <code>0</code> карт
 D: <code>0</code> карт
-E: <code>{user.collection_size}</code> карт
+E: <code>{user.cards_opened}</code> карт
 
 <b>🎯 Что дальше:</b>
 • Откройте первую пачку: /open_pack
@@ -281,7 +281,7 @@ async def cmd_open_pack(message: types.Message):
     async with AsyncSessionLocal() as session:
         db_user = await session.get(User, user.id)
         db_user.coins -= pack_price
-        db_user.collection_size += 3  # 3 карты в пачке
+        db_user.cards_opened += 3  # 3 карты в пачке
 
         # TODO: Реальное добавление карт из БД cards
         # Пока просто увеличиваем счетчик
@@ -298,7 +298,7 @@ async def cmd_open_pack(message: types.Message):
 (реальная механика в разработке)
 
 <b>📈 Ваша коллекция теперь:</b>
-Всего карт: <code>{user.collection_size + 3}</code>
+Всего карт: <code>{user.cards_opened + 3}</code>
 
 🎯 <b>Следующие шаги:</b>
 • Откройте еще пачек для редких карт
@@ -393,20 +393,17 @@ dp.include_router(main_router)
 
 
 # ===== FASTAPI ПРИЛОЖЕНИЕ =====
-# @asynccontextmanager
-# async def lifespan(app: FastAPI):
-#     # Инициализация базы
-#     async with engine.begin() as conn:
-#         await conn.run_sync(Base.metadata.create_all)
-        
-#     yield # Закрытие соединений
-    
-#     await engine.dispose()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    await engine.dispose()
 
 
 app = FastAPI(title="Anime Cards Game Bot",
               description="Игровой карточный бот для Telegram",
-              version="1.0.0")
+              version="1.0.0",
+              lifespan=lifespan
+             )
 
 
 # ===== ЭНДПОИНТЫ =====
@@ -504,7 +501,7 @@ async def get_stats():
     """Статистика сервиса"""
     async with AsyncSessionLocal() as session:
         # Считаем пользователей
-        result = await session.execute("SELECT COUNT(*) FROM users")
+        result = await session.execute(text("SELECT COUNT(*) FROM users"))
         user_count = result.scalar()
 
         # Считаем карты из оригинальной таблицы
