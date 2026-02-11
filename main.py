@@ -15,30 +15,9 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import Update
 from aiogram.filters import CommandStart, Command
+from aiogram.client.default import DefaultBotProperties
 import aiohttp
-import threading
-import requests
-import time
 
-def start_keep_alive():
-    """Запуск потока для поддержания Replit онлайн"""
-    def ping_loop():
-        while True:
-            try:
-                url = f"https://{settings.REPLIT_APP_NAME}.replit.dev/ping"
-                response = requests.get(url, timeout=10)
-                logger.info(f"🔄 Keep-alive ping: {response.status_code}")
-            except Exception as e:
-                logger.error(f"❌ Keep-alive ошибка: {e}")
-            time.sleep(300)  # 5 минут
-
-    if settings.REPLIT_APP_NAME:
-        thread = threading.Thread(target=ping_loop, daemon=True)
-        thread.start()
-        logger.info("✅ Keep-alive поток запущен")
-
-# В lifespan после настройки вебхука добавьте:
-start_keep_alive()
 # ===== НАСТРОЙКА ЛОГГИРОВАНИЯ =====
 logging.basicConfig(
     level=logging.INFO,
@@ -46,9 +25,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 # ===== КОНФИГУРАЦИЯ =====
 class Settings(BaseSettings):
-    DATABASE_URL: str
+    DB_URL: str
     TELEGRAM_BOT_TOKEN: str
     TELEGRAM_WEBHOOK_SECRET: str = "supersecret12345"
     TELEGRAM_ADMIN_ID: int
@@ -58,12 +38,16 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
 
+
 settings = Settings()
 
 # ===== БАЗА ДАННЫХ =====
-engine = create_async_engine(settings.DATABASE_URL, echo=False)
-AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+engine = create_async_engine(settings.DB_URL, echo=False)
+AsyncSessionLocal = async_sessionmaker(engine,
+                                       class_=AsyncSession,
+                                       expire_on_commit=False)
 Base = declarative_base()
+
 
 # ===== УПРОЩЕННЫЕ МОДЕЛИ =====
 class User(Base):
@@ -94,10 +78,14 @@ class User(Base):
     last_active = Column(DateTime, default=datetime.now)
     last_daily_tasks = Column(DateTime, nullable=True)
 
+
 # ===== TELEGRAM БОТ =====
-bot = Bot(token=settings.TELEGRAM_BOT_TOKEN, parse_mode="HTML")
+bot = Bot(token=settings.TELEGRAM_BOT_TOKEN,
+          default=DefaultBotProperties(parse_mode="HTML"))
+
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
+
 
 # ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
 async def get_db_session():
@@ -105,14 +93,16 @@ async def get_db_session():
     async with AsyncSessionLocal() as session:
         yield session
 
-async def get_user_or_create(telegram_id: int, username: str = None, 
-                            first_name: str = None, last_name: str = None) -> User:
+
+async def get_user_or_create(telegram_id: int,
+                             username: str = None,
+                             first_name: str = None,
+                             last_name: str = None) -> User:
     """Получить или создать пользователя"""
     async with AsyncSessionLocal() as session:
         # Ищем пользователя
         result = await session.execute(
-            select(User).where(User.telegram_id == telegram_id)
-        )
+            select(User).where(User.telegram_id == telegram_id))
         user = result.scalar_one_or_none()
 
         if user:
@@ -122,13 +112,11 @@ async def get_user_or_create(telegram_id: int, username: str = None,
             return user
 
         # Создаем нового пользователя
-        new_user = User(
-            telegram_id=telegram_id,
-            username=username,
-            first_name=first_name or "Игрок",
-            last_name=last_name,
-            last_active=datetime.now()
-        )
+        new_user = User(telegram_id=telegram_id,
+                        username=username,
+                        first_name=first_name or "Игрок",
+                        last_name=last_name,
+                        last_active=datetime.now())
 
         session.add(new_user)
         await session.commit()
@@ -137,16 +125,15 @@ async def get_user_or_create(telegram_id: int, username: str = None,
         logger.info(f"✅ Создан новый пользователь: {telegram_id}")
         return new_user
 
+
 # ===== TELEGRAM ХЕНДЛЕРЫ =====
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message):
     """Обработчик /start"""
-    user = await get_user_or_create(
-        telegram_id=message.from_user.id,
-        username=message.from_user.username,
-        first_name=message.from_user.first_name,
-        last_name=message.from_user.last_name
-    )
+    user = await get_user_or_create(telegram_id=message.from_user.id,
+                                    username=message.from_user.username,
+                                    first_name=message.from_user.first_name,
+                                    last_name=message.from_user.last_name)
 
     welcome_text = f"""
 🎮 <b>Добро пожаловать в Anime Cards Game</b>, {message.from_user.first_name}!
@@ -181,13 +168,15 @@ async def cmd_start(message: types.Message):
 
     await message.answer(welcome_text)
 
+
 @dp.message(Command("profile"))
 async def cmd_profile(message: types.Message):
     """Обработчик /profile"""
     user = await get_user_or_create(message.from_user.id)
 
     total_battles = user.arena_wins + user.arena_losses
-    win_rate = (user.arena_wins / total_battles * 100) if total_battles > 0 else 0
+    win_rate = (user.arena_wins / total_battles *
+                100) if total_battles > 0 else 0
     time_in_game = datetime.now() - user.created_at
     days = time_in_game.days
     hours = time_in_game.seconds // 3600
@@ -224,6 +213,7 @@ ID: <code>{user.id}</code>
 
     await message.answer(profile_text)
 
+
 @dp.message(Command("collection"))
 async def cmd_collection(message: types.Message):
     """Обработчик /collection"""
@@ -254,6 +244,7 @@ E: <code>{user.collection_size}</code> карт
 
     await message.answer(collection_text)
 
+
 @dp.message(Command("open_pack"))
 async def cmd_open_pack(message: types.Message):
     """Открыть пачку карт"""
@@ -261,12 +252,10 @@ async def cmd_open_pack(message: types.Message):
 
     pack_price = 100
     if user.coins < pack_price:
-        await message.answer(
-            f"❌ Не хватает монет!\n"
-            f"Нужно: <code>{pack_price}</code>\n"
-            f"У вас: <code>{user.coins}</code>\n\n"
-            f"💡 Получите монеты через /daily"
-        )
+        await message.answer(f"❌ Не хватает монет!\n"
+                             f"Нужно: <code>{pack_price}</code>\n"
+                             f"У вас: <code>{user.coins}</code>\n\n"
+                             f"💡 Получите монеты через /daily")
         return
 
     # Обновляем пользователя
@@ -305,6 +294,7 @@ async def cmd_open_pack(message: types.Message):
 
     await message.answer(pack_text)
 
+
 @dp.message(Command("daily"))
 async def cmd_daily(message: types.Message):
     """Ежедневная награда"""
@@ -338,6 +328,7 @@ async def cmd_daily(message: types.Message):
 """
 
     await message.answer(daily_text)
+
 
 @dp.message(Command("help"))
 async def cmd_help(message: types.Message):
@@ -379,6 +370,7 @@ async def cmd_help(message: types.Message):
 
     await message.answer(help_text)
 
+
 # ===== FASTAPI ПРИЛОЖЕНИЕ =====
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -396,8 +388,7 @@ async def lifespan(app: FastAPI):
             await bot.set_webhook(
                 url=webhook_url,
                 secret_token=settings.TELEGRAM_WEBHOOK_SECRET,
-                drop_pending_updates=True
-            )
+                drop_pending_updates=True)
             logger.info(f"✅ Вебхук установлен: {webhook_url}")
         except Exception as e:
             logger.error(f"❌ Ошибка вебхука: {e}")
@@ -409,12 +400,12 @@ async def lifespan(app: FastAPI):
     # Очистка при остановке
     await bot.session.close()
 
-app = FastAPI(
-    title="Anime Cards Game Bot",
-    description="Игровой карточный бот для Telegram",
-    version="1.0.0",
-    lifespan=lifespan
-)
+
+app = FastAPI(title="Anime Cards Game Bot",
+              description="Игровой карточный бот для Telegram",
+              version="1.0.0",
+              lifespan=lifespan)
+
 
 # ===== ЭНДПОИНТЫ =====
 @app.get("/")
@@ -429,6 +420,7 @@ async def root():
         "webhook_info": "/webhook-info",
         "ping": "/ping"
     }
+
 
 @app.get("/health")
 async def health_check():
@@ -450,6 +442,7 @@ async def health_check():
             "error": str(e),
             "timestamp": datetime.now().isoformat()
         }
+
 
 @app.post("/webhook")
 async def telegram_webhook(request: Request):
@@ -473,6 +466,7 @@ async def telegram_webhook(request: Request):
         logger.error(f"Ошибка обработки вебхука: {e}")
         return {"status": "error", "error": str(e)}, 500
 
+
 @app.get("/webhook-info")
 async def get_webhook_info():
     """Информация о текущем вебхуке"""
@@ -489,6 +483,7 @@ async def get_webhook_info():
     except Exception as e:
         return {"error": str(e)}
 
+
 @app.get("/ping")
 async def ping():
     """Пинг для поддержания Replit онлайн"""
@@ -497,6 +492,7 @@ async def ping():
         "timestamp": datetime.now().isoformat(),
         "service": "anime-cards-bot"
     }
+
 
 @app.get("/stats")
 async def get_stats():
@@ -516,6 +512,7 @@ async def get_stats():
             "service_uptime": "since startup",
             "timestamp": datetime.now().isoformat()
         }
+
 
 # ===== ЗАПУСК ДЛЯ REPLIT =====
 # Replit автоматически импортирует и запускает app
