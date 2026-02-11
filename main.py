@@ -11,11 +11,13 @@ from pydantic_settings import BaseSettings
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import declarative_base
 from sqlalchemy import Column, Integer, String, BigInteger, DateTime, JSON, Boolean, select
-from aiogram import Bot, Dispatcher, types
+from aiogram import Bot, Dispatcher, types, Router
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import Update
 from aiogram.filters import CommandStart, Command
 from aiogram.client.default import DefaultBotProperties
+from sqlalchemy.sql import func
+from fastapi.responses import JSONResponse
 import aiohttp
 
 # ===== НАСТРОЙКА ЛОГГИРОВАНИЯ =====
@@ -51,6 +53,7 @@ Base = declarative_base()
 
 # ===== УПРОЩЕННЫЕ МОДЕЛИ =====
 class User(Base):
+    """Модель игрока"""
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True)
@@ -58,25 +61,40 @@ class User(Base):
     username = Column(String, nullable=True)
     first_name = Column(String)
     last_name = Column(String, nullable=True)
+    language = Column(String, default="ru")
 
+    # Основная валюта
     coins = Column(Integer, default=500)
-    dust = Column(Integer, default=0)
-    level = Column(Integer, default=1)
-    collection_size = Column(Integer, default=0)
+    dust = Column(Integer, default=0)  # Пыль за распыление
 
+    # Прогресс
+    level = Column(Integer, default=1)
+    total_experience = Column(Integer, default=0)
+    cards_opened = Column(Integer, default=0)
+
+    # Колода
+    selected_deck = Column(JSON, default=list)  # ID карт из user_cards
+
+    # Лимиты и таймеры
+    expeditions_slots = Column(Integer, default=2)  # Слоты для экспедиций
+    last_trade_time = Column(DateTime, nullable=True)  # Последний обмен
+    trade_cooldown_hours = Column(Integer, default=12)  # КД на обмен
+
+    # Статистика
     arena_wins = Column(Integer, default=0)
     arena_losses = Column(Integer, default=0)
-    arena_rating = Column(Integer, default=1000)
+    arena_rating = Column(Integer, default=1000)  # Рейтинг Эло
     total_expeditions = Column(Integer, default=0)
     total_duplicates_dusted = Column(Integer, default=0)
     total_cards_upgraded = Column(Integer, default=0)
 
-    expeditions_slots = Column(Integer, default=2)
-    last_trade_time = Column(DateTime, nullable=True)
+    # Достижения (битовая маска или JSON)
+    achievements = Column(JSON, default=dict)
 
-    created_at = Column(DateTime, default=datetime.now)
-    last_active = Column(DateTime, default=datetime.now)
-    last_daily_tasks = Column(DateTime, nullable=True)
+    # Время
+    created_at = Column(DateTime, server_default=func.now())
+    last_active = Column(DateTime, server_default=func.now())
+    last_daily_tasks = Column(DateTime, nullable=True)  # Когда брал дневные задания
 
 
 # ===== TELEGRAM БОТ =====
@@ -127,7 +145,9 @@ async def get_user_or_create(telegram_id: int,
 
 
 # ===== TELEGRAM ХЕНДЛЕРЫ =====
-@dp.message(CommandStart())
+main_router = Router()
+
+@main_router.message(CommandStart())
 async def cmd_start(message: types.Message):
     """Обработчик /start"""
     user = await get_user_or_create(telegram_id=message.from_user.id,
@@ -169,7 +189,7 @@ async def cmd_start(message: types.Message):
     await message.answer(welcome_text)
 
 
-@dp.message(Command("profile"))
+@main_router.message(Command("profile"))
 async def cmd_profile(message: types.Message):
     """Обработчик /profile"""
     user = await get_user_or_create(message.from_user.id)
@@ -214,7 +234,7 @@ ID: <code>{user.id}</code>
     await message.answer(profile_text)
 
 
-@dp.message(Command("collection"))
+@main_router.message(Command("collection"))
 async def cmd_collection(message: types.Message):
     """Обработчик /collection"""
     user = await get_user_or_create(message.from_user.id)
@@ -245,7 +265,7 @@ E: <code>{user.collection_size}</code> карт
     await message.answer(collection_text)
 
 
-@dp.message(Command("open_pack"))
+@main_router.message(Command("open_pack"))
 async def cmd_open_pack(message: types.Message):
     """Открыть пачку карт"""
     user = await get_user_or_create(message.from_user.id)
@@ -295,7 +315,7 @@ async def cmd_open_pack(message: types.Message):
     await message.answer(pack_text)
 
 
-@dp.message(Command("daily"))
+@main_router.message(Command("daily"))
 async def cmd_daily(message: types.Message):
     """Ежедневная награда"""
     user = await get_user_or_create(message.from_user.id)
@@ -330,7 +350,7 @@ async def cmd_daily(message: types.Message):
     await message.answer(daily_text)
 
 
-@dp.message(Command("help"))
+@main_router.message(Command("help"))
 async def cmd_help(message: types.Message):
     """Обработчик /help"""
     help_text = """
@@ -369,6 +389,8 @@ async def cmd_help(message: types.Message):
 """
 
     await message.answer(help_text)
+
+dp.include_router(main_router)
 
 
 # ===== FASTAPI ПРИЛОЖЕНИЕ =====
@@ -464,7 +486,10 @@ async def telegram_webhook(request: Request):
         return {"status": "ok"}
     except Exception as e:
         logger.error(f"Ошибка обработки вебхука: {e}")
-        return {"status": "error", "error": str(e)}, 500
+        return JSONResponse(
+            status_code=500,
+            content={"status": "error", "error": str(e)}
+        )
 
 
 @app.get("/webhook-info")
