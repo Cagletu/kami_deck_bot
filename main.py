@@ -307,71 +307,71 @@ E: <code>{user.cards_opened}</code> карт
     await message.answer(collection_text)
 
 
-        @main_router.message(Command("open_pack"))
-        async def open_pack(message: types.Message):
-            """Открытие пачки карт (только показ)"""
-            async with AsyncSessionLocal() as session:
-                # Берем пользователя
-                result = await session.execute(
-                    select(User).where(User.telegram_id == message.from_user.id)
-                )
-                user = result.scalar_one_or_none()
-                if not user:
-                    await message.answer("Сначала напиши /start")
-                    return
+@main_router.message(Command("open_pack"))
+async def open_pack(message: types.Message):
+    """Открытие пачки карт (только показ)"""
+    async with AsyncSessionLocal() as session:
+        # Берем пользователя
+        result = await session.execute(
+            select(User).where(User.telegram_id == message.from_user.id)
+        )
+        user = result.scalar_one_or_none()
+        if not user:
+            await message.answer("Сначала напиши /start")
+            return
 
-                pack_price = 100
-                if user.coins < pack_price:
-                    await message.answer("❌ Недостаточно монет")
-                    return
+        pack_price = 100
+        if user.coins < pack_price:
+            await message.answer("❌ Недостаточно монет")
+            return
 
-                user.coins += pack_price
+        user.coins += pack_price
 
-                # Выбираем редкость
-                rarity = roll_rarity()
+        # Выбираем редкость
+        rarity = roll_rarity()
 
-                # Берем все карты этой редкости
-                result = await session.execute(
-                    select(Card).where(Card.rarity == rarity)
-                )
-                cards = result.scalars().all()
-                if not cards:
-                    await message.answer(f"❌ Нет карт редкости {rarity} в базе")
-                    return
+        # Берем все карты этой редкости
+        result = await session.execute(
+            select(Card).where(Card.rarity == rarity)
+        )
+        cards = result.scalars().all()
+        if not cards:
+            await message.answer(f"❌ Нет карт редкости {rarity} в базе")
+            return
 
-                # Выбираем одну случайную карту
-                won_card: Card = random.choice(cards)
+        # Выбираем одну случайную карту
+        won_card: Card = random.choice(cards)
 
-                # Формируем подпись
-                caption = (
-                    f"🎉 Тебе выпала карта!\n\n"
-                    f"✨ {won_card.card_name}\n"
-                    f"⭐ Редкость: {won_card.rarity}\n\n"
-                    f"💰 Осталось монет: {user.coins}"
-                )
+        # Формируем подпись
+        caption = (
+            f"🎉 Тебе выпала карта!\n\n"
+            f"✨ {won_card.card_name}\n"
+            f"⭐ Редкость: {won_card.rarity}\n\n"
+            f"💰 Осталось монет: {user.coins}"
+        )
 
-                # Отправка webp по original_url
-                await message.answer_photo(
-                    photo=won_card.original_url,
-                    caption=caption
-                )
+        # Отправка webp по original_url
+        await message.answer_photo(
+            photo=won_card.original_url,
+            caption=caption
+        )
 
-                # Показываем текст о пачке
-                pack_text = f"""
-        <b>📦 ВЫ ОТКРЫЛИ ПАЧКУ КАРТ!</b>
+        # Показываем текст о пачке
+        pack_text = f"""
+<b>📦 ВЫ ОТКРЫЛИ ПАЧКУ КАРТ!</b>
 
-        💰 Потрачено: <code>{pack_price}</code> монет
-        💰 Осталось: <code>{user.coins}</code> монет
+💰 Потрачено: <code>{pack_price}</code> монет
+💰 Осталось: <code>{user.coins}</code> монет
 
-        <b>🎉 Вы получили новую карту!</b>
-        (Сохранение в базу временно отключено)
+<b>🎉 Вы получили новую карту!</b>
+(Сохранение в базу временно отключено)
 
-        🎯 <b>Следующие шаги:</b>
-        • Открывайте ещё пачки
-        • Проверяйте /profile
-        • Ждите экспедиции и арену
-        """
-                await message.answer(pack_text)
+🎯 <b>Следующие шаги:</b>
+• Открывайте ещё пачки
+• Проверяйте /profile
+• Ждите экспедиции и арену
+"""
+        await message.answer(pack_text)
 
 #     pack_text = f"""
 # <b>📦 ВЫ ОТКРЫЛИ ПАЧКУ КАРТ!</b>
