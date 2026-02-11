@@ -380,9 +380,8 @@ async def lifespan(app: FastAPI):
         await conn.run_sync(Base.metadata.create_all)
 
     # Настраиваем вебхук для Replit
-    replit_domain = os.getenv("REPLIT_DEV_DOMAIN")
-    if replit_domain:
-        webhook_url = f"https://{replit_domain}/webhook"
+    if settings.REPLIT_APP_NAME:
+        webhook_url = f"https://{settings.REPLIT_APP_NAME}.replit.dev/webhook"
 
         try:
             await bot.delete_webhook(drop_pending_updates=True)
