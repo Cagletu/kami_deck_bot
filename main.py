@@ -34,8 +34,7 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: str
     TELEGRAM_WEBHOOK_SECRET: str = "supersecret12345"
     TELEGRAM_ADMIN_ID: int
-
-    REPLIT_APP_NAME: Optional[str] = None
+    WEBHOOK_URL: str
 
     class Config:
         env_file = ".env"
@@ -402,20 +401,18 @@ async def lifespan(app: FastAPI):
         await conn.run_sync(Base.metadata.create_all)
 
     # Настраиваем вебхук для Replit
-    if settings.REPLIT_APP_NAME:
-        webhook_url = f"https://{settings.REPLIT_APP_NAME}.replit.dev/webhook"
+    # if settings.REPLIT_APP_NAME:
+        # webhook_url = f"https://{settings.REPLIT_APP_NAME}.replit.dev/webhook"
 
-        try:
-            await bot.delete_webhook(drop_pending_updates=True)
-            await bot.set_webhook(
-                url=webhook_url,
-                secret_token=settings.TELEGRAM_WEBHOOK_SECRET,
-                drop_pending_updates=True)
-            logger.info(f"✅ Вебхук установлен: {webhook_url}")
-        except Exception as e:
-            logger.error(f"❌ Ошибка вебхука: {e}")
-    else:
-        logger.info("⚠️ REPLIT_APP_NAME не указан, вебхук не настроен")
+    try:
+        await bot.delete_webhook(drop_pending_updates=True)
+        await bot.set_webhook(
+            url=settings.WEBHOOK_URL,
+            secret_token=settings.TELEGRAM_WEBHOOK_SECRET,
+            drop_pending_updates=True)
+        logger.info(f"✅ Вебхук установлен: {settings.WEBHOOK_URL}")
+    except Exception as e:
+        logger.error(f"❌ Ошибка вебхука: {e}")
 
     yield
 
