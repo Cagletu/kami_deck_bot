@@ -17,7 +17,7 @@ from aiogram.types import Update
 from aiogram.filters import CommandStart, Command
 from aiogram.client.default import DefaultBotProperties
 from sqlalchemy.sql import func
-from fastapi.responses import JSONResponse
+from sqlalchemy import text
 import aiohttp
 
 # ===== НАСТРОЙКА ЛОГГИРОВАНИЯ =====
@@ -156,7 +156,7 @@ async def cmd_start(message: types.Message):
                                     last_name=message.from_user.last_name)
 
     welcome_text = f"""
-🎮 <b>Добро пожаловать в Anime Cards Game</b>, {message.from_user.first_name}!
+🎮 <b>Добро пожаловать в Kami Deck</b>, {message.from_user.first_name}!
 
 <b>📊 Ваш профиль:</b>
 👤 Уровень: <code>{user.level}</code>
@@ -450,7 +450,7 @@ async def health_check():
     try:
         # Проверяем подключение к БД
         async with AsyncSessionLocal() as session:
-            await session.execute("SELECT 1")
+            await session.execute(text("SELECT 1"))
 
         return {
             "status": "healthy",
