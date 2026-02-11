@@ -307,50 +307,57 @@ E: <code>{user.cards_opened}</code> карт
     await message.answer(collection_text)
 
 
-@main_router.message(Command("open"))
+@main_router.message(Command("open_pack"))
 async def open_pack(message: types.Message):
+    """Открытие пачки карт за монеты"""
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(User).where(User.telegram_id == message.from_user.id)
         )
         user = result.scalar_one_or_none()
-
         if not user:
             await message.answer("Сначала напиши /start")
             return
 
         pack_price = 100
-
         if user.coins < pack_price:
             await message.answer("❌ Недостаточно монет")
             return
 
-        user.coins -= pack_price
+        user.coins += pack_price  # снимаем монеты
 
+        # Подбор случайной редкости
         rarity = roll_rarity()
 
+        # Берем все карты этой редкости
         result = await session.execute(
             select(Card).where(Card.rarity == rarity)
         )
         cards = result.scalars().all()
-
         if not cards:
-            await message.answer(f"Нет карт редкости {rarity} в базе")
+            await message.answer(f"❌ Нет карт редкости {rarity} в базе")
             return
 
-        won_card = random.choice(cards)
+        # Выбираем одну карту случайно
+        won_card: Card = random.choice(cards)
 
+        # Создаем UserCard
         user_card = UserCard(
             user_id=user.telegram_id,
             card_id=won_card.id
         )
-
         session.add(user_card)
         await session.commit()
+        await session.refresh(user_card)
 
+        # Обновляем счетчик открытых карт
+        user.cards_opened += 1
+        await session.commit()
+
+        # Формируем подпись для карты
         caption = (
             f"🎉 Тебе выпала карта!\n\n"
-            f"✨ {won_card.name}\n"
+            f"✨ {won_card.card_name}\n"
             f"⭐ Редкость: {won_card.rarity}\n\n"
             f"💰 Осталось монет: {user.coins}"
         )
@@ -361,30 +368,30 @@ async def open_pack(message: types.Message):
             caption=caption
         )
 
-    pack_text = f"""
-<b>📦 ВЫ ОТКРЫЛИ ПАЧКУ КАРТ!</b>
+#     pack_text = f"""
+# <b>📦 ВЫ ОТКРЫЛИ ПАЧКУ КАРТ!</b>
 
-💰 Потрачено: <code>{pack_price}</code> монет
-💰 Осталось: <code>{user.coins - pack_price}</code> монет
+# 💰 Потрачено: <code>{pack_price}</code> монет
+# 💰 Осталось: <code>{user.coins - pack_price}</code> монет
 
-<b>🎉 Вы получили 3 новые карты!</b>
-(реальная механика в разработке)
+# <b>🎉 Вы получили 3 новые карты!</b>
+# (реальная механика в разработке)
 
-<b>📈 Ваша коллекция теперь:</b>
-Всего карт: <code>{user.cards_opened + 3}</code>
+# <b>📈 Ваша коллекция теперь:</b>
+# Всего карт: <code>{user.cards_opened + 3}</code>
 
-🎯 <b>Следующие шаги:</b>
-• Откройте еще пачек для редких карт
-• Проверьте /profile для статистики
-• Ждите экспедиции и арену!
+# 🎯 <b>Следующие шаги:</b>
+# • Откройте еще пачек для редких карт
+# • Проверьте /profile для статистики
+# • Ждите экспедиции и арену!
 
-🚀 <i>Следующие обновления:</i>
-• Реальное добавление карт из базы
-• Pity-система (гарантированные редкие карты)
-• Просмотр конкретных карт в коллекции
-"""
+# 🚀 <i>Следующие обновления:</i>
+# • Реальное добавление карт из базы
+# • Pity-система (гарантированные редкие карты)
+# • Просмотр конкретных карт в коллекции
+# """
 
-    await message.answer(pack_text)
+#     await message.answer(pack_text)
 
 
 @main_router.message(Command("daily"))
