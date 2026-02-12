@@ -81,7 +81,7 @@ async def give_starting_cards(user_id: int, session: AsyncSession):
     await update_user_collection_size(user_id, session)
 
 async def update_user_collection_size(user_id: int, session: AsyncSession = None):
-    """Обновить счетчик карт в коллекции"""
+    """Обновить счетчик открытых карт"""
     if not session:
         async with AsyncSessionLocal() as session:
             result = await session.execute(
@@ -90,10 +90,9 @@ async def update_user_collection_size(user_id: int, session: AsyncSession = None
             count = result.scalar()
 
             await session.execute(
-                User.__table__.update().where(User.id == user_id).values(
-                    collection_size=count,
-                    cards_opened=count
-                )
+                User.__table__.update()
+                .where(User.id == user_id)
+                .values(cards_opened=count)
             )
             await session.commit()
     else:
@@ -103,10 +102,9 @@ async def update_user_collection_size(user_id: int, session: AsyncSession = None
         count = result.scalar()
 
         await session.execute(
-            User.__table__.update().where(User.id == user_id).values(
-                collection_size=count,
-                cards_opened=count
-            )
+            User.__table__.update()
+            .where(User.id == user_id)
+            .values(cards_opened=count)
         )
 
 # ===== КОЛЛЕКЦИЯ =====
@@ -305,7 +303,7 @@ async def start_expedition(
             .where(
                 and_(
                     Expedition.user_id == user_id,
-                    Expedition.status == ExpeditionStatus.ACTIVE
+                    Expedition.status == "ACTIVE"
                 )
             )
         )
@@ -316,9 +314,9 @@ async def start_expedition(
 
         # Настройки длительности
         duration_map = {
-            ExpeditionType.SHORT: 30,
-            ExpeditionType.MEDIUM: 120,
-            ExpeditionType.LONG: 360
+            ExpeditionType.SHORT: 1, #30,
+            ExpeditionType.MEDIUM: 2, #120,
+            ExpeditionType.LONG: 3, #360
         }
 
         duration = duration_map[expedition_type]
@@ -346,7 +344,7 @@ async def start_expedition(
         expedition = Expedition(
             user_id=user_id,
             name=f"Экспедиция {expedition_type.value}",
-            expedition_type=expedition_type,
+            expedition_type=expedition_type.value if hasattr(expedition_type, "value") else expedition_type,
             duration_minutes=duration,
             card_ids=card_ids,
             reward_coins=base_coins,
@@ -355,7 +353,7 @@ async def start_expedition(
             reward_card_chance=card_chance,
             anime_bonus=anime_bonus,
             ends_at=datetime.now() + timedelta(minutes=duration),
-            status=ExpeditionStatus.ACTIVE
+            status="ACTIVE"
         )
 
         session.add(expedition)
@@ -381,10 +379,10 @@ async def claim_expedition(expedition_id: int) -> dict:
     async with AsyncSessionLocal() as session:
         expedition = await session.get(Expedition, expedition_id)
 
-        if expedition.status != ExpeditionStatus.COMPLETED:
+        if expedition.status != "COMPLETED":
             if expedition.ends_at > datetime.now():
                 raise ValueError("Экспедиция еще не завершена")
-            expedition.status = ExpeditionStatus.COMPLETED
+            expedition.status = "COMPLETED"
 
         user = await session.get(User, expedition.user_id)
 
@@ -446,17 +444,20 @@ async def get_user_cards_paginated(
 ):
     query = (
         select(UserCard)
+        .join(Card, UserCard.card_id == Card.id)
         .where(UserCard.user_id == user_id)
         .options(selectinload(UserCard.card))
-        .offset(page * page_size)
-        .limit(page_size + 1)
     )
 
     if rarity:
-        query = query.join(Card).where(Card.rarity == rarity)
+        query = query.where(Card.rarity == rarity)
 
     if search:
-        query = query.join(Card).where(Card.name.ilike(f"%{search}%"))
+        query = query.where(
+            Card.card_name.ilike(f"%{search}%")
+        )
+
+    query = query.offset(page * page_size).limit(page_size + 1)
 
     result = await session.execute(query)
     cards = result.scalars().all()
