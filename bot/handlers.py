@@ -5,7 +5,12 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQu
 from datetime import datetime
 from database.base import AsyncSessionLocal
 import logging
+
 from database.models.user import User
+from database.models.user_card import UserCard
+from database.models.card import Card
+
+from sqlalchemy import select
 
 from database.crud import (
     get_user_or_create,
@@ -165,13 +170,18 @@ async def collection_by_rarity(callback: types.CallbackQuery):
 @router.callback_query(lambda c: c.data.startswith("rarity_"))
 async def show_rarity_collection(callback: types.CallbackQuery):
     try:
-        rarity = callback.data.replace("rarity_", "").upper()
+        # Парсим callback_data: rarity_SSS_1 или rarity_SSS
+        parts = callback.data.split("_")
+        rarity = parts[1].upper()
+        page = int(parts[2]) if len(parts) > 2 else 1
+
         async with AsyncSessionLocal() as session:
             user = await get_user_or_create(session, callback.from_user.id)
-            cards, total = await get_user_collection(
-                user.id, 
-                rarity_filter=rarity, 
-                page_size=5
+            cards, total, total_pages = await get_user_collection(
+                user.id,
+                page=page,
+                page_size=5,
+                rarity_filter=rarity
             )
 
         if not cards:
@@ -187,20 +197,51 @@ async def show_rarity_collection(callback: types.CallbackQuery):
 
         text = f"<b>📊 Карты редкости {rarity}</b>\n\n"
         for i, (user_card, card) in enumerate(cards, 1):
-            text += f"{i}. <b>{card.card_name}</b>\n"
-            text += f"   ⚔️ Ур.{user_card.level} | 💪{user_card.current_power}\n"
+            status = ""
+            if user_card.is_favorite:
+                status = "⭐ "
+            elif user_card.is_in_deck:
+                status = "⚔️ "
+            elif user_card.is_in_expedition:
+                status = "🏕️ "
+
+            text += f"{status}<b>{card.card_name}</b>\n"
+            text += f"   Уровень: {user_card.level} | 💪 {user_card.current_power}\n"
             text += f"   🎬 {card.anime_name[:30]}...\n\n"
 
-        text += f"<i>Показано {len(cards)} из {total} карт</i>"
+        text += f"<i>Страница {page} из {total_pages} • Всего {total} карт</i>"
 
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text="« Назад", callback_data="collection_by_rarity"),
-                InlineKeyboardButton(text="🏠 В меню", callback_data="back_to_collection")
-            ]
+        # Клавиатура с пагинацией
+        keyboard = []
+        nav_buttons = []
+
+        if page > 1:
+            nav_buttons.append(InlineKeyboardButton(
+                text="◀️", 
+                callback_data=f"rarity_{rarity}_{page-1}"
+            ))
+
+        nav_buttons.append(InlineKeyboardButton(
+            text=f"{page}/{total_pages}", 
+            callback_data="noop"
+        ))
+
+        if page < total_pages:
+            nav_buttons.append(InlineKeyboardButton(
+                text="▶️", 
+                callback_data=f"rarity_{rarity}_{page+1}"
+            ))
+
+        keyboard.append(nav_buttons)
+        keyboard.append([
+            InlineKeyboardButton(text="« К редкостям", callback_data="collection_by_rarity"),
+            InlineKeyboardButton(text="🏠 В меню", callback_data="back_to_collection")
         ])
 
-        await callback.message.edit_text(text, reply_markup=keyboard)
+        await callback.message.edit_text(
+            text, 
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
+        )
         await callback.answer()
 
     except Exception as e:
@@ -393,6 +434,67 @@ async def cmd_help(message: types.Message):
     except Exception as e:
         logger.exception(f"Ошибка cmd_help: {e}")
         await message.answer("❌ Произошла ошибка. Попробуйте позже.")
+
+
+@router.callback_query(lambda c: c.data.startswith("view_card_"))
+async def view_card_detail(callback: types.CallbackQuery):
+    """Просмотр детальной информации о карте с изображением"""
+    card_id = int(callback.data.replace("view_card_", ""))
+
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(UserCard, Card)
+            .join(Card, UserCard.card_id == Card.id)
+            .where(UserCard.id == card_id)
+        )
+        user_card, card = result.first()
+
+    # Статистика карты
+    text = f"""
+<b>✨ {card.card_name}</b>
+
+<b>📋 Информация:</b>
+🎭 Персонаж: {card.character_name}
+⭐ Редкость: {card.rarity}
+📺 Аниме: {card.anime_name}
+
+<b>⚔️ Характеристики:</b>
+💪 Сила: {user_card.current_power}
+❤️ Здоровье: {user_card.current_health}
+⚔️ Атака: {user_card.current_attack}
+🛡️ Защита: {user_card.current_defense}
+
+<b>📊 Прогресс:</b>
+📈 Уровень: {user_card.level}
+✨ Очков улучшения: {user_card.upgrade_points}
+🔄 Улучшено раз: {user_card.times_upgraded}
+
+<b>🏆 Статус:</b>
+{'⚔️ В колоде' if user_card.is_in_deck else '📦 В коллекции'}
+{'⭐ Избранная' if user_card.is_favorite else ''}
+{'🏕️ В экспедиции' if user_card.is_in_expedition else ''}
+
+📅 Получена: {user_card.obtained_at.strftime('%d.%m.%Y')}
+    """
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="⭐ В избранное", callback_data=f"favorite_{card_id}"),
+            InlineKeyboardButton(text="⚔️ В колоду", callback_data=f"add_to_deck_{card_id}")
+        ],
+        [
+            InlineKeyboardButton(text="✨ Улучшить", callback_data=f"upgrade_{card_id}"),
+            InlineKeyboardButton(text="💎 Распылить", callback_data=f"dust_{card_id}")
+        ],
+        [InlineKeyboardButton(text="« Назад", callback_data="back_to_collection")]
+    ])
+
+    await callback.message.answer_photo(
+        photo=card.original_url,
+        caption=text,
+        reply_markup=keyboard
+    )
+    await callback.answer()
 
 
 # ===== CALLBACKS =====

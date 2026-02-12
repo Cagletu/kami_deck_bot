@@ -110,37 +110,34 @@ async def update_user_collection_size(user_id: int, session: AsyncSession = None
 async def get_user_collection(
     user_id: int,
     page: int = 1,
-    page_size: int = 10,
+    page_size: int = 5,
     rarity_filter: str = None
-) -> Tuple[List[Tuple[UserCard, Card]], int]:
+) -> Tuple[List[Tuple[UserCard, Card]], int, int]:
     """Получить коллекцию пользователя с пагинацией"""
     async with AsyncSessionLocal() as session:
-        # Базовый запрос
         query = (
             select(UserCard, Card)
             .join(Card, UserCard.card_id == Card.id)
             .where(UserCard.user_id == user_id)
         )
 
-        # Фильтр по редкости
         if rarity_filter:
             query = query.where(Card.rarity == rarity_filter.upper())
 
-        # Сначала считаем общее количество
         count_query = select(func.count()).select_from(query.subquery())
         total = await session.scalar(count_query)
 
-        # Пагинация и сортировка
         query = query.order_by(
-            Card.rarity.desc(),
-            Card.card_name
+            UserCard.obtained_at.desc(),
+            Card.rarity.desc()
         ).offset((page - 1) * page_size).limit(page_size)
 
         result = await session.execute(query)
         items = result.all()
 
-        # ВОЗВРАЩАЕМ КОРТЕЖ, А НЕ СПИСОК
-        return items, total
+        total_pages = (total + page_size - 1) // page_size if total > 0 else 1
+
+        return items, total, total_pages
 
 async def get_collection_stats(user_id: int) -> dict:
     """Получить статистику коллекции по редкостям"""
