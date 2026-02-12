@@ -20,9 +20,6 @@ from bot.keyboards import (
 router = Router()
 logger = logging.getLogger(__name__)
 
-print("🔥 Expedition router загружен!")
-print(f"📋 Хендлеры: {[f.__name__ for f in router.message_handlers + router.callback_query_handlers]}")
-
 @router.message(Command("expedition"))
 async def cmd_expedition(message: Message):
     """Главное меню экспедиций"""
