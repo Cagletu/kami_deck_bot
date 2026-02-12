@@ -116,3 +116,12 @@ async def health_check():
             "database": "disconnected",
             "error": str(e)
         }
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.exception(f"Global exception: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"status": "error", "detail": "Internal server error"}
+    )

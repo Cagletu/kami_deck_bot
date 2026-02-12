@@ -139,6 +139,7 @@ async def get_user_collection(
         result = await session.execute(query)
         items = result.all()
 
+        # ВОЗВРАЩАЕМ КОРТЕЖ, А НЕ СПИСОК
         return items, total
 
 async def get_collection_stats(user_id: int) -> dict:
@@ -449,3 +450,52 @@ async def get_user_cards_paginated(
 
     has_next = len(cards) > page_size
     return cards[:page_size], has_next
+
+
+async def claim_daily_reward(user_id: int, session: AsyncSession) -> dict:
+    """Получить ежедневную награду"""
+    user = await session.get(User, user_id)
+
+    if user.last_daily_tasks and user.last_daily_tasks.date() == datetime.now().date():
+        raise ValueError("Ежедневная награда уже получена")
+
+    reward_coins = 100
+    reward_dust = 10
+
+    user.coins += reward_coins
+    user.dust += reward_dust
+    user.last_daily_tasks = datetime.now()
+
+    await session.commit()
+
+    return {
+        "coins": reward_coins,
+        "dust": reward_dust,
+        "total_coins": user.coins,
+        "total_dust": user.dust
+    }
+
+
+async def get_user_by_telegram_id(telegram_id: int) -> Optional[User]:
+    """Получить пользователя по telegram_id"""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(User).where(User.telegram_id == telegram_id)
+        )
+        return result.scalar_one_or_none()
+
+
+async def get_user_cards_count(user_id: int, rarity: str = None) -> int:
+    """Получить количество карт пользователя"""
+    async with AsyncSessionLocal() as session:
+        query = select(func.count()).select_from(UserCard).where(UserCard.user_id == user_id)
+
+        if rarity:
+            query = (
+                select(func.count())
+                .select_from(UserCard)
+                .join(Card, UserCard.card_id == Card.id)
+                .where(UserCard.user_id == user_id, Card.rarity == rarity)
+            )
+
+        return await session.scalar(query)

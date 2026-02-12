@@ -78,25 +78,26 @@ def expedition_type_keyboard() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def collection_keyboard(page: int, has_next: bool):
+def collection_keyboard(page: int, has_next: bool, rarity: str = None) -> InlineKeyboardMarkup:
+    """Клавиатура для пагинации коллекции"""
     buttons = []
 
     nav_row = []
     if page > 0:
         nav_row.append(
-            InlineKeyboardButton(text="⬅️ Назад", callback_data=f"col_page:{page-1}")
+            InlineKeyboardButton(text="⬅️ Назад", callback_data=f"col_page:{page-1}:{rarity}" if rarity else f"col_page:{page-1}")
         )
     if has_next:
         nav_row.append(
-            InlineKeyboardButton(text="➡️ Вперёд", callback_data=f"col_page:{page+1}")
+            InlineKeyboardButton(text="➡️ Вперёд", callback_data=f"col_page:{page+1}:{rarity}" if rarity else f"col_page:{page+1}")
         )
 
     if nav_row:
         buttons.append(nav_row)
 
     buttons.append([
-        InlineKeyboardButton(text="🔎 Поиск", callback_data="col_search"),
-        InlineKeyboardButton(text="🎴 Фильтр", callback_data="col_filter"),
+        InlineKeyboardButton(text="« Назад к редкостям", callback_data="collection_by_rarity"),
+        InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_main"),
     ])
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)
