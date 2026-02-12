@@ -18,13 +18,13 @@ from game.pack_system import PACK_SETTINGS
 # ===== ПОЛЬЗОВАТЕЛИ =====
 
 async def get_user_or_create(
+    session: AsyncSession,
     telegram_id: int,
     username: str = None,
     first_name: str = None,
     last_name: str = None
 ) -> User:
-    """Получить пользователя или создать нового"""
-    async with AsyncSessionLocal() as session:
+    
         result = await session.execute(
             select(User).where(User.telegram_id == telegram_id)
         )
@@ -32,7 +32,6 @@ async def get_user_or_create(
 
         if user:
             user.last_active = datetime.now()
-            await session.commit()
             return user
 
         new_user = User(
@@ -47,8 +46,7 @@ async def get_user_or_create(
         )
 
         session.add(new_user)
-        await session.commit()
-        await session.refresh(new_user)
+        await session.flush()
 
         # Даем стартовые карты новому игроку
         await give_starting_cards(new_user.id, session)

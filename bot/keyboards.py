@@ -34,15 +34,15 @@ def collection_menu_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(text="📊 По редкости", callback_data="collection_by_rarity"),
-        InlineKeyboardButton(text="🎌 По аниме", callback_data="collection_by_anime"),
+        InlineKeyboardButton(text="🎌 По аниме нераб", callback_data="collection_by_anime"),
     )
     builder.row(
-        InlineKeyboardButton(text="⭐ Избранные", callback_data="collection_favorites"),
-        InlineKeyboardButton(text="⚔️ В колоде", callback_data="collection_in_deck"),
+        InlineKeyboardButton(text="⭐ Избранные нераб", callback_data="collection_favorites"),
+        InlineKeyboardButton(text="⚔️ В колоде нераб", callback_data="collection_in_deck"),
     )
     builder.row(
         InlineKeyboardButton(text="📈 Статистика", callback_data="collection_stats"),
-        InlineKeyboardButton(text="🔝 Самые сильные", callback_data="collection_strongest"),
+        InlineKeyboardButton(text="🔝 Самые сильные нераб", callback_data="collection_strongest"),
     )
     return builder.as_markup()
 

@@ -1,7 +1,7 @@
 # bot/handlers.py
-from aiogram import Router, types
+from aiogram import Router, types, F
 from aiogram.filters import CommandStart, Command
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from datetime import datetime
 from database.base import AsyncSessionLocal
 from database.models.user import User
@@ -12,6 +12,7 @@ from database.crud import (
     get_user_collection,
     get_collection_stats,
     open_pack,
+    get_user_cards_paginated,
     start_expedition,
     claim_expedition
 )
@@ -20,7 +21,8 @@ from bot.keyboards import (
     main_menu_keyboard,
     collection_menu_keyboard,
     rarity_keyboard,
-    expedition_type_keyboard
+    expedition_type_keyboard,
+    collection_keyboard,
 )
 
 router = Router()
@@ -209,18 +211,25 @@ async def back_to_collection(callback: types.CallbackQuery):
 @router.message(Command("open_pack"))
 async def cmd_open_pack(message: types.Message):
     try:
-        user = await get_user_or_create(message.from_user.id)
-        if user.coins < 100:
-            await message.answer(
-                "❌ Недостаточно монет!\n"
-                "💰 Получите ежедневную награду: /daily\n"
-                "🏕️ Или отправьте персонажей в экспедицию: /expedition"
-            )
-            return
-
-        cards, pack_open = await open_pack(user.id, "common")
         async with AsyncSessionLocal() as session:
-            updated_user = await session.get(User, user.id)
+            user = await get_user_or_create(
+                    session,
+                    message.from_user.id,
+                    message.from_user.username,                                                           message.from_user.first_name,
+                    message.from_user.last_name )
+            if user.coins < 100:
+                await message.answer(
+                    "❌ Недостаточно монет!\n"
+                    "💰 Получите ежедневную награду: /daily\n"
+                    "🏕️ Или отправьте персонажей в экспедицию: /expedition"
+            )
+                return
+    
+            cards, pack_open = await open_pack(user.id, "common")
+            await session.commit()
+    
+            # user уже обновлён
+            updated_user = user
 
         text = f"<b>📦 ВЫ ОТКРЫЛИ ПАЧКУ КАРТ!</b>\n\n💰 Потрачено: <code>100</code> монет\n💰 Осталось: <code>{updated_user.coins}</code> монет\n\n<b>🎉 Вы получили:</b>\n"
         for card in cards:
@@ -357,3 +366,160 @@ async def cmd_help(message: types.Message):
     except Exception as e:
         logger.exception(f"Ошибка cmd_help: {e}")
         await message.answer("❌ Произошла ошибка. Попробуйте позже.")
+
+
+@router.callback_query(F.data == "collection_by_rarity")
+async def cb_collection_menu(callback: CallbackQuery):
+    await callback.message.edit_text(
+        "🃏 <b>Коллекция</b>",
+        reply_markup=collection_menu_keyboard()
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "open_pack")
+async def cb_open_pack(callback: types.CallbackQuery):
+    try:
+        async with AsyncSessionLocal() as session:
+            user = await get_user_or_create(
+                session,
+                callback.from_user.id,
+                callback.from_user.username,
+                callback.from_user.first_name,
+                callback.from_user.last_name
+            )
+
+            if user.coins < 100:
+                await callback.answer("Недостаточно монет!", show_alert=True)
+                return
+
+            cards, pack_open = await open_pack(user.id, "common")
+            await session.commit()
+
+            updated_user = user
+
+        text = f"<b>📦 ВЫ ОТКРЫЛИ ПАЧКУ КАРТ!</b>\n\n💰 Потрачено: <code>100</code> монет\n💰 Осталось: <code>{updated_user.coins}</code> монет\n\n<b>🎉 Вы получили:</b>\n"
+        for card in cards:
+            emoji = {'E':'⚪','D':'🟢','C':'⚡','B':'💫','A':'🔮','S':'⭐','ASS':'✨','SSS':'🏆'}.get(card.rarity,'🃏')
+            text += f"{emoji} <b>{card.card_name}</b> [{card.rarity}]\n"
+        if pack_open.guaranteed_rarity:
+            text += f"\n🎁 <b>ГАРАНТИЯ!</b> Вам выпала {pack_open.guaranteed_rarity} карта!"
+
+        await callback.message.answer_photo(photo=cards[0].original_url, caption=text)
+
+        if len(cards) > 1:
+            media_group = [
+                types.InputMediaPhoto(
+                    media=card.original_url,
+                    caption=f"{card.card_name} [{card.rarity}]"
+                )
+                for card in cards[1:]
+            ]
+            await callback.message.answer_media_group(media_group)
+
+        await callback.answer()  # закрыть "часики"
+
+    except ValueError as e:
+        await callback.answer(str(e), show_alert=True)
+    except Exception as e:
+        logger.exception(f"Ошибка открытия пачки: {e}")
+        await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("rarity_"))
+async def cb_rarity_collection(callback: CallbackQuery):
+    rarity = callback.data.split("_")[1]
+
+    async with AsyncSessionLocal() as session:
+        user = await get_user_or_create(callback.from_user.id)
+        cards, has_next = await get_user_cards_paginated(
+            session=session,
+            user_id=user.id,
+            page=0,
+            rarity=rarity
+        )
+
+    if not cards:
+        await callback.answer("Нет карт этой редкости")
+        return
+
+    card = cards[0]
+
+    caption = (
+        f"🃏 <b>{card.card.card_name}</b>\n"
+        f"⭐ Редкость: {card.card.rarity}\n"
+        f"⚔️ Сила: {card.current_power}"
+    )
+
+    await callback.message.delete()
+
+    await callback.message.answer_photo(
+        photo=card.card.original_url,
+        caption=caption,
+        reply_markup=collection_keyboard(0, has_next)
+    )
+
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("col_page:"))
+async def cb_collection_page(callback: CallbackQuery):
+    page = int(callback.data.split(":")[1])
+
+    async with AsyncSessionLocal() as session:
+        user = await get_user_or_create(callback.from_user.id)
+        cards, has_next = await get_user_cards_paginated(
+            session=session,
+            user_id=user.id,
+            page=page
+        )
+
+    if not cards:
+        await callback.answer("Больше карт нет")
+        return
+
+    card = cards[0]
+
+    caption = (
+        f"🃏 <b>{card.card.card_name}</b>\n"
+        f"⭐ {card.card.rarity}\n"
+        f"⚔️ {card.current_power}"
+    )
+
+    await callback.message.edit_media(
+        media=types.InputMediaPhoto(
+            media=card.card.original_url,
+            caption=caption
+        ),
+        reply_markup=collection_keyboard(page, has_next)
+    )
+
+    await callback.answer()
+
+
+@router.callback_query(F.data == "expedition")
+async def cb_expedition_menu(callback: CallbackQuery):
+    await callback.message.edit_text(
+        "🏕️ Выберите тип экспедиции:",
+        reply_markup=expedition_type_keyboard()
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "back_to_main")
+async def cb_back_main(callback: CallbackQuery):
+    await callback.message.edit_text(
+        "🏠 Главное меню",
+        reply_markup=main_menu_keyboard()
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "back_to_collection_menu")
+async def cb_back_collection(callback: CallbackQuery):
+    await callback.message.edit_text(
+        "🃏 Коллекция",
+        reply_markup=collection_menu_keyboard()
+    )
+    await callback.answer()
+
