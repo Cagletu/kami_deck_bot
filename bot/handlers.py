@@ -44,7 +44,7 @@ async def cmd_start(message: types.Message):
 👤 Уровень: <code>{user.level}</code>
 💰 Монеты: <code>{user.coins}</code>
 ✨ Пыль: <code>{user.dust}</code>
-🃏 Карточек: <code>{user.collection_size or 0}</code>
+🃏 Карточек: <code>{user.cards_opened or 0}</code>
 
 <b>🏆 Статистика:</b>
 ⚔️ Рейтинг: <code>{user.arena_rating}</code>
@@ -88,7 +88,7 @@ ID: <code>{user.id}</code>
 Слотов экспедиций: <code>{user.expeditions_slots}</code>
 
 <b>🃏 Коллекция:</b>
-Всего карт: <code>{user.collection_size or 0}</code>
+Всего карт: <code>{user.cards_opened or 0}</code>
 SSS: {stats['SSS']} | ASS: {stats['ASS']} | S: {stats['S']}
 A: {stats['A']} | B: {stats['B']} | C: {stats['C']}
 D: {stats['D']} | E: {stats['E']}
@@ -113,7 +113,7 @@ async def cmd_collection(message: types.Message):
     collection_text = f"""
 <b>🃏 КОЛЛЕКЦИЯ КАРТ</b>
 
-Всего карт: <code>{user.collection_size or 0}</code>
+Всего карт: <code>{user.cards_opened or 0}</code>
 
 <b>📊 По редкостям:</b>
 🏆 SSS: <code>{stats['SSS']}</code> | ✨ ASS: <code>{stats['ASS']}</code> | ⭐ S: <code>{stats['S']}</code>
