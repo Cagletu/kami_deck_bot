@@ -1,7 +1,7 @@
 PACK_SETTINGS = {
     "common": {
         "price": 1,
-        "cards_count": 5,
+        "cards_count": 3,
         "rarity_weights": {
             "E": 40,
             "D": 30,

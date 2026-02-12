@@ -110,7 +110,7 @@ async def update_user_collection_size(user_id: int, session: AsyncSession = None
 async def get_user_collection(
     user_id: int,
     page: int = 1,
-    page_size: int = 5,
+    page_size: int = 10,
     rarity_filter: str = None
 ) -> Tuple[List[Tuple[UserCard, Card]], int, int]:
     """Получить коллекцию пользователя с пагинацией"""
