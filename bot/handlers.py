@@ -34,14 +34,17 @@ def safe_handler(func):
             return await func(*args, **kwargs)
         except Exception as e:
             logger.exception(f"Ошибка в хендлере {func.__name__}: {e}")
-            # Пытаемся ответить пользователю, если доступен объект message или callback
-            if "message" in kwargs:
-                await kwargs["message"].answer("❌ Произошла ошибка. Попробуйте позже.")
-            elif args and isinstance(args[0], types.Message):
-                await args[0].answer("❌ Произошла ошибка. Попробуйте позже.")
-            elif args and isinstance(args[0], types.CallbackQuery):
-                await args[0].answer("❌ Произошла ошибка. Попробуйте позже.")
+
+            # Попытка уведомить пользователя
+            for arg in args:
+                if isinstance(arg, types.Message):
+                    await arg.answer("❌ Произошла ошибка. Попробуйте позже.")
+                    break
+                elif isinstance(arg, types.CallbackQuery):
+                    await arg.answer("❌ Произошла ошибка. Попробуйте позже.")
+                    break
     return wrapper
+
 
 # ===== START =====
 @router.message(CommandStart())
