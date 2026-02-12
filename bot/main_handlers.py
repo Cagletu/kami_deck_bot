@@ -590,17 +590,17 @@ async def cb_collection_page(callback: CallbackQuery):
         await callback.answer("❌ Произошла ошибка.", show_alert=True)
 
 
-@router.callback_query(F.data == "expedition")
-async def cb_expedition_menu(callback: CallbackQuery):
-    try:
-        await callback.message.edit_text(
-            "🏕️ Выберите тип экспедиции:",
-            reply_markup=expedition_type_keyboard()
-        )
-        await callback.answer()
-    except Exception as e:
-        logger.exception(f"Ошибка cb_expedition_menu: {e}")
-        await callback.answer("❌ Произошла ошибка.")
+# @router.callback_query(F.data == "expedition")
+# async def cb_expedition_menu(callback: CallbackQuery):
+#     try:
+#         await callback.message.edit_text(
+#             "🏕️ Выберите тип экспедиции:",
+#             reply_markup=expedition_type_keyboard()
+#         )
+#         await callback.answer()
+#     except Exception as e:
+#         logger.exception(f"Ошибка cb_expedition_menu: {e}")
+#         await callback.answer("❌ Произошла ошибка.")
 
 
 @router.callback_query(F.data == "back_to_main")
@@ -627,7 +627,3 @@ async def cb_back_collection(callback: CallbackQuery):
     except Exception as e:
         logger.exception(f"Ошибка cb_back_collection: {e}")
         await callback.answer("❌ Произошла ошибка.")
-
-
-# Импортируем модель User для daily команды
-from database.models.user import User

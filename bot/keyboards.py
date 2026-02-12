@@ -126,11 +126,11 @@ def expedition_main_keyboard(active_count: int, uncollected_count: int, slots: i
 
     if free_slots > 0:
         builder.row(
-            InlineKeyboardButton(text="🕐 30 мин", callback_data="exped_new_short"),
-            InlineKeyboardButton(text="🕑 2 часа", callback_data="exped_new_medium"),
+            InlineKeyboardButton(text="🕐 30 мин", callback_data="exped_new_short"),  # ИСПРАВЛЕНО
+            InlineKeyboardButton(text="🕑 2 часа", callback_data="exped_new_medium"),  # ИСПРАВЛЕНО
         )
         builder.row(
-            InlineKeyboardButton(text="🕕 6 часов", callback_data="exped_new_long"),
+            InlineKeyboardButton(text="🕕 6 часов", callback_data="exped_new_long"),   # ИСПРАВЛЕНО
         )
 
     builder.row(

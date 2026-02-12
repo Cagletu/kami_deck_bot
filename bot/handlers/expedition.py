@@ -74,6 +74,124 @@ async def cmd_expedition(message: Message):
         logger.exception(f"Ошибка cmd_expedition: {e}")
         await message.answer("❌ Произошла ошибка. Попробуйте позже.")
 
+# ВРЕМЕННОООООООООООООООООООООООО
+@router.callback_query()
+async def debug_all_callbacks(callback: CallbackQuery):
+    """ВРЕМЕННО: отладка всех callback"""
+    print(f"🔍 Получен callback: {callback.data}")
+
+
+@router.callback_query(F.data == "expedition")
+async def exped_main_menu(callback: CallbackQuery):
+    """Возврат в главное меню экспедиций"""
+    try:
+        async with AsyncSessionLocal() as session:
+            user = await get_user_or_create(session, callback.from_user.id)
+
+        active, uncollected = await ExpeditionManager.get_active_expeditions(user.id)
+        free_slots = user.expeditions_slots - len(active)
+
+        text = f"""
+<b>🏕️ ЭКСПЕДИЦИИ</b>
+
+📊 <b>Ваши слоты:</b> {user.expeditions_slots}
+🔵 Активных: {len(active)}
+🟢 Готово к забору: {len(uncollected)}
+⚪ Свободно: {free_slots}
+
+<b>⚡ Доступные экспедиции:</b>
+
+🕐 <b>30 минут</b>
+• 6-9 монет за карту
+• 1 пыль за карту
+• 50% шанс на E карту
+
+🕑 <b>2 часа</b>
+• 24-36 монет за карту
+• 4 пыли за карту
+• 100% шанс на D карту
+
+🕕 <b>6 часов</b>
+• 72-108 монет за карту
+• 12 пыли за карту
+• 100% шанс на C карту
+
+💡 <b>Бонусы:</b>
+• +50% награды за карты из одного аниме
+• x1-x3 за количество карт
+"""
+        await callback.message.edit_text(
+            text,
+            reply_markup=expedition_main_keyboard(
+                len(active), 
+                len(uncollected), 
+                user.expeditions_slots,
+                free_slots
+            )
+        )
+        await callback.answer()
+
+    except Exception as e:
+        logger.exception(f"Ошибка exped_main_menu: {e}")
+        await callback.answer("❌ Произошла ошибка", show_alert=True)
+
+
+@router.callback_query(F.data == "expedition")  # ДУБЛЬ ДЛЯ КОМАНДЫ
+async def exped_main_menu_cmd(callback: CallbackQuery):
+    """Обработчик для кнопки expedition из главного меню"""
+    await exped_main_menu(callback)
+
+
+@router.callback_query(F.data.startswith("exped_new_"))
+async def exped_new_start(callback: CallbackQuery, state: FSMContext):
+    """Начало новой экспедиции - выбор карт"""
+    try:
+        duration = callback.data.replace("exped_new_", "")  # short, medium, long
+
+        # Сохраняем длительность
+        await state.update_data(duration=duration)
+        await state.update_data(selected_cards=[])
+        await state.set_state(ExpeditionStates.choosing_cards)
+
+        # Показываем доступные карты
+        cards = await ExpeditionManager.get_available_cards(callback.from_user.id)
+
+        if not cards:
+            await callback.message.edit_text(
+                "❌ <b>Нет карт для экспедиции!</b>\n\n"
+                "Карты должны быть:\n"
+                "• Не в колоде\n"
+                "• Не в другой экспедиции\n\n"
+                "Откройте пачку: /open_pack",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="« Назад", callback_data="expedition")]
+                ])
+            )
+            await callback.answer()
+            return
+
+        # Получаем количество карт для отображения
+        card_count = len(cards)
+
+        text = f"""
+<b>🏕️ ВЫБЕРИТЕ КАРТЫ</b>
+
+📊 Доступно карт: {card_count}
+Можно выбрать от 1 до 3 карт.
+✅ - карта выбрана
+
+💡 <b>Бонус +50%</b> если все карты из одного аниме!
+"""
+        await callback.message.edit_text(
+            text,
+            reply_markup=expedition_cards_keyboard(cards, [])
+        )
+        await callback.answer()
+
+    except Exception as e:
+        logger.exception(f"Ошибка exped_new_start: {e}")
+        await callback.answer("❌ Произошла ошибка", show_alert=True)
+
 
 @router.callback_query(F.data.startswith("exped_new_"))
 async def exped_new_start(callback: CallbackQuery, state: FSMContext):

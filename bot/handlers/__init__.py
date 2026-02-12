@@ -1,5 +1,5 @@
-from .expedition import router as expedition_router
+# from .expedition import router as expedition_router
 
-routers = [
-  expedition_router,
-]
+# routers = [
+#   expedition_router,
+# ]
