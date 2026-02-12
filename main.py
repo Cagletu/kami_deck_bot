@@ -14,7 +14,7 @@ from aiogram.types import Update
 from aiogram.client.default import DefaultBotProperties
 
 from database.base import engine, AsyncSessionLocal
-from bot.handlers import router as main_router
+from bot.main_handlers import router as main_router
 from bot.handlers.expedition import router as expedition_router
 
 from bot.keyboards import set_bot_commands
