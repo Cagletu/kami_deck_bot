@@ -24,11 +24,28 @@ from bot.keyboards import (
 )
 
 router = Router()
-
 logger = logging.getLogger(__name__)
+
+
+# ===== ДЕКОРАТОР БЕЗОПАСНЫХ ХЕНДЛЕРОВ =====
+def safe_handler(func):
+    async def wrapper(*args, **kwargs):
+        try:
+            return await func(*args, **kwargs)
+        except Exception as e:
+            logger.exception(f"Ошибка в хендлере {func.__name__}: {e}")
+            # Пытаемся ответить пользователю, если доступен объект message или callback
+            if "message" in kwargs:
+                await kwargs["message"].answer("❌ Произошла ошибка. Попробуйте позже.")
+            elif args and isinstance(args[0], types.Message):
+                await args[0].answer("❌ Произошла ошибка. Попробуйте позже.")
+            elif args and isinstance(args[0], types.CallbackQuery):
+                await args[0].answer("❌ Произошла ошибка. Попробуйте позже.")
+    return wrapper
 
 # ===== START =====
 @router.message(CommandStart())
+@safe_handler
 async def cmd_start(message: types.Message):
     user = await get_user_or_create(
         telegram_id=message.from_user.id,
@@ -63,6 +80,7 @@ async def cmd_start(message: types.Message):
 
 # ===== PROFILE =====
 @router.message(Command("profile"))
+@safe_handler
 async def cmd_profile(message: types.Message):
     user = await get_user_or_create(message.from_user.id)
     
@@ -106,6 +124,7 @@ D: {stats['D']} | E: {stats['E']}
 
 # ===== COLLECTION =====
 @router.message(Command("collection"))
+@safe_handler
 async def cmd_collection(message: types.Message):
     user = await get_user_or_create(message.from_user.id)
     stats = await get_collection_stats(user.id)
@@ -175,6 +194,7 @@ async def show_rarity_collection(callback: types.CallbackQuery):
 
 # ===== OPEN PACK =====
 @router.message(Command("open_pack"))
+@safe_handler
 async def cmd_open_pack(message: types.Message):
     user = await get_user_or_create(message.from_user.id)
     
@@ -237,6 +257,7 @@ async def cmd_open_pack(message: types.Message):
 
 # ===== EXPEDITION =====
 @router.message(Command("expedition"))
+@safe_handler
 async def cmd_expedition(message: types.Message):
     user = await get_user_or_create(message.from_user.id)
     
@@ -257,6 +278,7 @@ async def cmd_expedition(message: types.Message):
 
 # ===== DAILY =====
 @router.message(Command("daily"))
+@safe_handler
 async def cmd_daily(message: types.Message):
     user = await get_user_or_create(message.from_user.id)
     
@@ -293,6 +315,7 @@ async def cmd_daily(message: types.Message):
 
 # ===== HELP =====
 @router.message(Command("help"))
+@safe_handler
 async def cmd_help(message: types.Message):
     help_text = """
 <b>❓ ПОМОЩЬ ПО ANIME CARDS GAME</b>

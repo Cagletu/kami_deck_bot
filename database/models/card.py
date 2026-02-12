@@ -35,7 +35,7 @@ class Card(Base):
 
     # ДОБАВЛЯЕМ НОВЫЕ ПОЛЯ которые есть в модели но нет в БД
     # (они добавятся при следующей миграции)
-    updated_at = Column(DateTime, onupdate=func.now())
+    # updated_at = Column(DateTime, onupdate=func.now())
 
     def __repr__(self):
         return f"<Card {self.card_name} ({self.rarity})>"
