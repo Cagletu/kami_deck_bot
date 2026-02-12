@@ -312,31 +312,6 @@ async def cmd_open_pack(message: types.Message):
         await message.answer("❌ Произошла ошибка. Попробуйте позже.")
 
 
-# ===== EXPEDITION =====
-@router.message(Command("expedition"))
-async def cmd_expedition(message: types.Message):
-    try:
-        async with AsyncSessionLocal() as session:
-            user = await get_user_or_create(session, message.from_user.id)
-
-        text = f"""
-<b>🏕️ ЭКСПЕДИЦИИ</b>
-
-Слотов: <code>{user.expeditions_slots}</code>
-
-Выберите длительность экспедиции:
-• 🕐 30 мин - 6-9 монет, 1 пыль, 50% шанс E карты
-• 🕑 2 часа - 24-36 монет, 4 пыли, 100% шанс D карты
-• 🕕 6 часов - 72-108 монет, 12 пыли, 100% шанс C карты
-
-💡 <b>Бонус:</b> +50% награды за карты из одного аниме!
-"""
-        await message.answer(text, reply_markup=expedition_type_keyboard())
-    except Exception as e:
-        logger.exception(f"Ошибка cmd_expedition: {e}")
-        await message.answer("❌ Произошла ошибка. Попробуйте позже.")
-
-
 # ===== DAILY =====
 @router.message(Command("daily"))
 async def cmd_daily(message: types.Message):

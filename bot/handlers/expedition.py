@@ -20,6 +20,8 @@ from bot.keyboards import (
 router = Router()
 logger = logging.getLogger(__name__)
 
+print("🔥 Expedition router загружен!")
+print(f"📋 Хендлеры: {[f.__name__ for f in router.message_handlers + router.callback_query_handlers]}")
 
 @router.message(Command("expedition"))
 async def cmd_expedition(message: Message):
@@ -136,12 +138,6 @@ async def exped_main_menu(callback: CallbackQuery):
         await callback.answer("❌ Произошла ошибка", show_alert=True)
 
 
-@router.callback_query(F.data == "expedition")  # ДУБЛЬ ДЛЯ КОМАНДЫ
-async def exped_main_menu_cmd(callback: CallbackQuery):
-    """Обработчик для кнопки expedition из главного меню"""
-    await exped_main_menu(callback)
-
-
 @router.callback_query(F.data.startswith("exped_new_"))
 async def exped_new_start(callback: CallbackQuery, state: FSMContext):
     """Начало новой экспедиции - выбор карт"""
@@ -177,53 +173,6 @@ async def exped_new_start(callback: CallbackQuery, state: FSMContext):
 <b>🏕️ ВЫБЕРИТЕ КАРТЫ</b>
 
 📊 Доступно карт: {card_count}
-Можно выбрать от 1 до 3 карт.
-✅ - карта выбрана
-
-💡 <b>Бонус +50%</b> если все карты из одного аниме!
-"""
-        await callback.message.edit_text(
-            text,
-            reply_markup=expedition_cards_keyboard(cards, [])
-        )
-        await callback.answer()
-
-    except Exception as e:
-        logger.exception(f"Ошибка exped_new_start: {e}")
-        await callback.answer("❌ Произошла ошибка", show_alert=True)
-
-
-@router.callback_query(F.data.startswith("exped_new_"))
-async def exped_new_start(callback: CallbackQuery, state: FSMContext):
-    """Начало новой экспедиции - выбор карт"""
-    try:
-        duration = callback.data.replace("exped_new_", "")  # short, medium, long
-
-        # Сохраняем длительность
-        await state.update_data(duration=duration)
-        await state.update_data(selected_cards=[])
-        await state.set_state(ExpeditionStates.choosing_cards)
-
-        # Показываем доступные карты
-        cards = await ExpeditionManager.get_available_cards(callback.from_user.id)
-
-        if not cards:
-            await callback.message.edit_text(
-                "❌ <b>Нет карт для экспедиции!</b>\n\n"
-                "Карты должны быть:\n"
-                "• Не в колоде\n"
-                "• Не в другой экспедиции\n\n"
-                "Откройте пачку: /open_pack",
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="« Назад", callback_data="expedition")]
-                ])
-            )
-            await callback.answer()
-            return
-
-        text = """
-<b>🏕️ ВЫБЕРИТЕ КАРТЫ</b>
-
 Можно выбрать от 1 до 3 карт.
 ✅ - карта выбрана
 
