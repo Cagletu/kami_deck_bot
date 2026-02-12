@@ -181,23 +181,18 @@ async def open_pack(
         return await _open_pack_transaction(user_id, pack_type, session)
 
 async def _open_pack_transaction(user_id: int, pack_type: str, session: AsyncSession):
-    """Транзакция открытия пачки"""
-
-    # Настройки пачки
     settings = PACK_SETTINGS.get(pack_type)
-
     if not settings:
         raise ValueError("Неизвестный тип пака")
 
-    # Получаем пользователя
+    pity_a_max = settings.get("pity_a", 10)
+    pity_s_max = settings.get("pity_s", 30)
+
     user = await session.get(User, user_id)
     if user.coins < settings["price"]:
         raise ValueError("Недостаточно монет")
-
-    # Снимаем монеты
     user.coins -= settings["price"]
 
-    # Получаем последнее открытие пачки для pity
     last_open = await session.execute(
         select(PackOpening)
         .where(PackOpening.user_id == user_id)
@@ -206,47 +201,42 @@ async def _open_pack_transaction(user_id: int, pack_type: str, session: AsyncSes
     )
     last_open = last_open.scalar_one_or_none()
 
-    # Pity счетчики
-    pity_a = 0
-    pity_s = 0
-    if last_open:
-        pity_a = last_open.packs_since_last_a + 1
-        pity_s = last_open.packs_since_last_s + 1
+    pity_a = (last_open.packs_since_last_a or 0) + 1 if last_open else 0
+    pity_s = (last_open.packs_since_last_s or 0) + 1 if last_open else 0
 
-    # Генерируем карты
     cards = []
     rarities = []
     guaranteed_rarity = None
 
-    for i in range(settings["cards_count"]):
-        # Проверяем pity
-        if pity_a >= settings["pity_a"]:
+    for _ in range(settings["cards_count"]):
+        # Pity
+        if pity_a >= pity_a_max:
             rarity = "A"
             guaranteed_rarity = "A"
             pity_a = 0
-        elif pity_s >= settings["pity_s"]:
+        elif pity_s >= pity_s_max:
             rarity = "S"
             guaranteed_rarity = "S"
             pity_s = 0
         else:
-            # Обычный ролл
             rarity = random.choices(
                 list(settings["rarity_weights"].keys()),
                 weights=list(settings["rarity_weights"].values())
             )[0]
 
-        # Берем случайную карту этой редкости
         result = await session.execute(
             select(Card)
             .where(Card.rarity == rarity)
             .order_by(func.random())
             .limit(1)
         )
-        card = result.scalar_one()
+        card = result.scalar_one_or_none()
+        if not card:
+            continue  # безопасно пропустить
+
         cards.append(card)
         rarities.append(rarity)
 
-        # Добавляем карту в коллекцию
         user_card = UserCard(
             user_id=user_id,
             card_id=card.id,
@@ -259,17 +249,15 @@ async def _open_pack_transaction(user_id: int, pack_type: str, session: AsyncSes
         )
         session.add(user_card)
 
-        # Обновляем pity счетчики
-        if rarity in ['A', 'S', 'ASS', 'SSS']:
-            if rarity == 'A':
-                pity_a = 0
-            if rarity in ['S', 'ASS', 'SSS']:
-                pity_s = 0
+        # обновляем pity
+        if rarity == "A":
+            pity_a = 0
+        if rarity in ["S", "ASS", "SSS"]:
+            pity_s = 0
         else:
             pity_a += 1
             pity_s += 1
 
-    # Записываем открытие пачки
     pack_open = PackOpening(
         user_id=user_id,
         pack_type=pack_type,
@@ -281,7 +269,6 @@ async def _open_pack_transaction(user_id: int, pack_type: str, session: AsyncSes
         guaranteed_rarity=guaranteed_rarity
     )
     session.add(pack_open)
-
     await session.commit()
 
     return cards, pack_open
