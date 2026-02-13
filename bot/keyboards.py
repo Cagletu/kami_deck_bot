@@ -1,11 +1,11 @@
 # bot/keyboards.py
-from datetime import datetime
 from aiogram import Bot
 from aiogram.types import BotCommand, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from database.models.card import Card
 from database.models.user_card import UserCard
 from typing import List, Tuple
+from datetime import datetime
 
 async def set_bot_commands(bot: Bot):
     """Установка команд бота в меню"""
