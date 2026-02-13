@@ -12,112 +12,91 @@ from database.models.expedition import Expedition, ExpeditionType, ExpeditionSta
 from database.base import AsyncSessionLocal
 import logging
 
-
 logger = logging.getLogger(__name__)
 
 
 class ExpeditionManager:
 
     @staticmethod
-    async def get_available_cards(
-        session: AsyncSession,
-        user_id: int
-    ) -> List[Tuple[UserCard, Card]]:
+    async def get_available_cards(session: AsyncSession,
+                                  user_id: int) -> List[Tuple[UserCard, Card]]:
         """Получить карты доступные для экспедиции"""
-        
+
         # Приоритет редкости: SSS > ASS > S > A > B > C > D > E
         rarity_order = {
-            'SSS': 0, 'ASS': 1, 'S': 2, 'A': 3, 
-            'B': 4, 'C': 5, 'D': 6, 'E': 7
+            'SSS': 0,
+            'ASS': 1,
+            'S': 2,
+            'A': 3,
+            'B': 4,
+            'C': 5,
+            'D': 6,
+            'E': 7
         }
-        
+
         result = await session.execute(
-            select(UserCard, Card)
-            .join(Card, UserCard.card_id == Card.id)
-            .where(
-                UserCard.user_id == user_id,
-                UserCard.is_in_expedition == False,  # Не в экспедиции
-                UserCard.is_in_deck == False         # Не в колоде
-            )
-            .limit(50)
-        )
+            select(UserCard,
+                   Card).join(Card, UserCard.card_id == Card.id).where(
+                       UserCard.user_id == user_id,
+                       UserCard.is_in_expedition == False,  # Не в экспедиции
+                       UserCard.is_in_deck == False  # Не в колоде
+                   ).limit(50))
 
         cards = result.all()
         logger.info(f"Доступных карт после фильтрации: {len(cards)}")
 
         # сортировка по рангу → по уровню
         cards.sort(
-            key=lambda x: (
-                rarity_order.get(x[1].rarity, 999),
-                -x[0].level
-            )
-        )
+            key=lambda x: (rarity_order.get(x[1].rarity, 999), -x[0].level))
 
         return cards
 
     @staticmethod
-    async def get_active_expeditions(session: AsyncSession, user_id: int) -> Tuple[List[Expedition], List[Expedition]]:
+    async def get_active_expeditions(
+            session: AsyncSession,
+            user_id: int) -> Tuple[List[Expedition], List[Expedition]]:
         """Получить активные и завершенные экспедиции"""
         logger.info(f"🔍 get_active_expeditions для user_id={user_id}")
 
         # Проверяем завершенные
         now = datetime.now()
-        result = await session.execute(
-            Expedition.__table__.update()
-            .where(
-                and_(
-                    Expedition.user_id == user_id,
-                    Expedition.status == ExpeditionStatus.ACTIVE,
-                    Expedition.ends_at <= now
-                )
-            )
-            .values(status=ExpeditionStatus.COMPLETED)
-            .returning(Expedition.id)
-        )
+        result = await session.execute(Expedition.__table__.update().where(
+            and_(Expedition.user_id == user_id,
+                 Expedition.status == ExpeditionStatus.ACTIVE,
+                 Expedition.ends_at
+                 <= now)).values(status=ExpeditionStatus.COMPLETED).returning(
+                     Expedition.id))
         updated = result.rowcount
         if updated > 0:
             logger.info(f"✅ Завершено экспедиций: {updated}")
 
         # Получаем активные
         result = await session.execute(
-            select(Expedition)
-            .where(
-                and_(
-                    Expedition.user_id == user_id,
-                    Expedition.status == ExpeditionStatus.ACTIVE
-                )
-            )
-            .order_by(Expedition.ends_at)
-        )
+            select(Expedition).where(
+                and_(Expedition.user_id == user_id,
+                     Expedition.status == ExpeditionStatus.ACTIVE)).order_by(
+                         Expedition.ends_at))
         active = result.scalars().all()
         logger.info(f"📊 Активных экспедиций: {len(active)}")
 
         # Получаем незабранные
         result = await session.execute(
-            select(Expedition)
-            .where(
-                and_(
-                    Expedition.user_id == user_id,
-                    Expedition.status == ExpeditionStatus.COMPLETED,
-                    Expedition.collected == False
-                )
-            )
-        )
+            select(Expedition).where(
+                and_(Expedition.user_id == user_id,
+                     Expedition.status == ExpeditionStatus.COMPLETED,
+                     Expedition.collected == False)))
         uncollected = result.scalars().all()
         logger.info(f"📊 Незабранных экспедиций: {len(uncollected)}")
 
         return active, uncollected
 
     @staticmethod
-    async def calculate_rewards(
-        session: AsyncSession,
-        card_ids: List[int],
-        duration_minutes: int
-    ) -> dict:
+    async def calculate_rewards(session: AsyncSession, card_ids: List[int],
+                                duration_minutes: int) -> dict:
         """Рассчитать награды за экспедицию"""
         # Базовая награда за 1 карту (исправить при проде на // вместо * оба)
         base_coins = duration_minutes * 5  # 30м=6, 2ч=24, 6ч=72
-        base_dust = duration_minutes * 30   # 30м=1, 2ч=4, 6ч=12
+        base_dust = duration_minutes * 30000  # 30м=1, 2ч=4, 6ч=12
 
         # Множитель за количество карт (1-3x)
         card_multiplier = len(card_ids)
@@ -126,10 +105,8 @@ class ExpeditionManager:
         anime_bonus = False
         if len(card_ids) >= 2:
             cards_result = await session.execute(
-                select(Card)
-                .join(UserCard, UserCard.card_id == Card.id)
-                .where(UserCard.id.in_(card_ids))
-            )
+                select(Card).join(UserCard, UserCard.card_id == Card.id).where(
+                    UserCard.id.in_(card_ids)))
         cards = cards_result.scalars().all()
         anime_set = set(c.anime_name for c in cards)
         anime_bonus = len(anime_set) == 1
@@ -141,9 +118,7 @@ class ExpeditionManager:
         base_chance_per_card_per_hour = 20  # 20% в час за карту
         hours = duration_minutes / 60
         card_chance = min(
-            int(hours * len(card_ids) * base_chance_per_card_per_hour),
-            100
-        )
+            int(hours * len(card_ids) * base_chance_per_card_per_hour), 100)
 
         # Если аниме бонус и карт >= 2, увеличиваем шанс
         if anime_bonus and len(card_ids) >= 2:
@@ -167,28 +142,28 @@ class ExpeditionManager:
         }
 
     @staticmethod
-    async def start_expedition(
-        session: AsyncSession,
-        user_id: int,
-        card_ids: List[int],
-        duration_type: str
-    ) -> Expedition:
+    async def start_expedition(session: AsyncSession, user_id: int,
+                               card_ids: List[int],
+                               duration_type: str) -> Expedition:
         """Начать экспедицию"""
-        logger.info(f"🚀 start_expedition: user_id={user_id}, card_ids={card_ids}, duration={duration_type}")
+        logger.info(
+            f"🚀 start_expedition: user_id={user_id}, card_ids={card_ids}, duration={duration_type}"
+        )
         # Проверка количества карт
         if len(card_ids) < 1 or len(card_ids) > 3:
             raise ValueError("Можно отправить от 1 до 3 карт")
 
         # Длительность (исправить при проде)
         duration_map = {
-            "short": 1, # 30,
-            "medium": 1, # 120,
-            "long": 1 # 360
+            "short": 1,  # 30,
+            "medium": 1,  # 120,
+            "long": 1  # 360
         }
         duration = duration_map[duration_type]
 
         # Расчет наград
-        rewards = await ExpeditionManager.calculate_rewards(session, card_ids, duration)
+        rewards = await ExpeditionManager.calculate_rewards(
+            session, card_ids, duration)
 
         # Создание экспедиции
         # Проверяем слоты
@@ -196,35 +171,39 @@ class ExpeditionManager:
         if not user:
             logger.error(f"❌ Пользователь {user_id} не найден")
             raise ValueError("Пользователь не найден")
-        active, _ = await ExpeditionManager.get_active_expeditions(session, user_id)
+        active, _ = await ExpeditionManager.get_active_expeditions(
+            session, user_id)
 
         if len(active) >= user.expeditions_slots:
-            logger.error(f"❌ Нет свободных слотов: {len(active)} >= {user.expeditions_slots}")
+            logger.error(
+                f"❌ Нет свободных слотов: {len(active)} >= {user.expeditions_slots}"
+            )
             raise ValueError("Нет свободных слотов для экспедиции")
 
         cards_check = await session.execute(
-            select(UserCard)
-            .where(UserCard.id.in_(card_ids))
-            .where(UserCard.user_id == user_id)
-            .where(UserCard.is_in_expedition == False)
-        )
+            select(UserCard).where(UserCard.id.in_(card_ids)).where(
+                UserCard.user_id == user_id).where(
+                    UserCard.is_in_expedition == False))
 
         valid_cards = cards_check.scalars().all()
-        logger.info(f"✅ Доступных карт из запрошенных: {len(valid_cards)} из {len(card_ids)}")
+        logger.info(
+            f"✅ Доступных карт из запрошенных: {len(valid_cards)} из {len(card_ids)}"
+        )
 
         if len(valid_cards) != len(card_ids):
             # Найдем какие карты недоступны
             for card_id in card_ids:
                 card_check = await session.execute(
-                    select(UserCard)
-                    .where(UserCard.id == card_id)
-                )
+                    select(UserCard).where(UserCard.id == card_id))
                 card = card_check.scalar_one_or_none()
                 if card:
-                    logger.error(f"❌ Карта {card_id}: is_in_expedition={card.is_in_expedition}, is_in_deck={card.is_in_deck}")
+                    logger.error(
+                        f"❌ Карта {card_id}: is_in_expedition={card.is_in_expedition}, is_in_deck={card.is_in_deck}"
+                    )
                 else:
                     logger.error(f"❌ Карта {card_id} не найдена")
-            raise ValueError("Некоторые карты уже используются в экспедиции или колоде")
+            raise ValueError(
+                "Некоторые карты уже используются в экспедиции или колоде")
 
         # Округляем время начала до текущего момента
         now = datetime.now()
@@ -249,8 +228,7 @@ class ExpeditionManager:
             rarity_bonus=rewards["multiplier"],
             ends_at=ends_at,
             status=ExpeditionStatus.ACTIVE,
-            collected=False
-        )
+            collected=False)
 
         session.add(expedition)
         logger.info("➕ Экспедиция создана, ожидает flush")
@@ -264,25 +242,21 @@ class ExpeditionManager:
             raise
 
         # Помечаем карты
-        result = await session.execute(
-            UserCard.__table__.update()
-            .where(UserCard.id.in_(card_ids))
-            .values(
-                is_in_expedition=True,
-                expedition_end_time=expedition.ends_at
-            )
-        )
+        result = await session.execute(UserCard.__table__.update().where(
+            UserCard.id.in_(card_ids)).values(
+                is_in_expedition=True, expedition_end_time=expedition.ends_at))
         logger.info(f"🔄 Обновлено карт: {result.rowcount}")
 
         user.total_expeditions += 1
 
-        logger.info(f"✅ Экспедиция {expedition.id} успешно создана и готова к коммиту")
-        
+        logger.info(
+            f"✅ Экспедиция {expedition.id} успешно создана и готова к коммиту")
+
         return expedition
-        
 
     @staticmethod
-    async def claim_expedition(session: AsyncSession, expedition_id: int) -> dict:
+    async def claim_expedition(session: AsyncSession,
+                               expedition_id: int) -> dict:
         """Забрать награду одной экспедиции"""
         expedition = await session.get(Expedition, expedition_id)
 
@@ -307,22 +281,19 @@ class ExpeditionManager:
         }
 
         # Шанс на карту
-        if expedition.reward_card_rarity and random.randint(1, 100) <= expedition.reward_card_chance:
+        if expedition.reward_card_rarity and random.randint(
+                1, 100) <= expedition.reward_card_chance:
             result = await session.execute(
-                select(Card)
-                .where(Card.rarity == expedition.reward_card_rarity)
-                .order_by(func.random())
-                .limit(1)
-            )
+                select(Card).where(
+                    Card.rarity == expedition.reward_card_rarity).order_by(
+                        func.random()).limit(1))
             card = result.scalar_one_or_none()
 
             if card:
-                user_card = UserCard(
-                    user_id=user.id,
-                    card_id=card.id,
-                    level=1,
-                    source="expedition"
-                )
+                user_card = UserCard(user_id=user.id,
+                                     card_id=card.id,
+                                     level=1,
+                                     source="expedition")
                 session.add(user_card)
                 rewards["card"] = card
 
@@ -330,32 +301,29 @@ class ExpeditionManager:
                 user.cards_opened += 1
 
         # Освобождаем карты
-        await session.execute(
-            UserCard.__table__.update()
-            .where(UserCard.id.in_(expedition.card_ids))
-            .values(
-                is_in_expedition=False,
-                expedition_end_time=None
-            )
-        )
+        await session.execute(UserCard.__table__.update().where(
+            UserCard.id.in_(expedition.card_ids)).values(
+                is_in_expedition=False, expedition_end_time=None))
 
         expedition.collected = True
         expedition.completed_at = datetime.now()
 
         return rewards
-        
 
     @staticmethod
-    async def claim_all_expeditions(session: AsyncSession, user_id: int) -> dict:
+    async def claim_all_expeditions(session: AsyncSession,
+                                    user_id: int) -> dict:
         """Забрать награды всех завершенных экспедиций"""
-        _, uncollected = await ExpeditionManager.get_active_expeditions(session, user_id)
+        _, uncollected = await ExpeditionManager.get_active_expeditions(
+            session, user_id)
 
         total_coins = 0
         total_dust = 0
         cards_won = []
 
         for expedition in uncollected:
-            rewards = await ExpeditionManager.claim_expedition(session, expedition.id)
+            rewards = await ExpeditionManager.claim_expedition(
+                session, expedition.id)
             total_coins += rewards["coins"]
             total_dust += rewards["dust"]
             if rewards["card"]:

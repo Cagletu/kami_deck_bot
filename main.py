@@ -50,7 +50,7 @@ dp.include_router(main_router)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    logger.info("🚀 Запуск Anime Cards Game Bot...")
+    logger.info("🚀 Запуск Kami Deck...")
     await set_bot_commands(bot)
     yield
     # Shutdown
@@ -60,7 +60,7 @@ async def lifespan(app: FastAPI):
 
 # ===== FASTAPI ПРИЛОЖЕНИЕ =====
 app = FastAPI(
-    title="Anime Cards Game Bot",
+    title="Kami Deck Bot",
     description="Игровой карточный бот для Telegram",
     version="2.0.0",
     lifespan=lifespan

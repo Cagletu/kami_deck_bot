@@ -5,7 +5,7 @@ modules = ["python-3.11"]
 
 [nix]
 channel = "stable-25_05"
-packages = ["libxcrypt", "postgresql"]
+packages = ["libxcrypt", "postgresql", "python312Packages.pyngrok"]
 
 [unitTest]
 language = "python3"
