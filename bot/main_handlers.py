@@ -11,6 +11,9 @@ import logging
 from database.models.user import User
 from database.models.user_card import UserCard
 from database.models.card import Card
+from database.crud_cards import get_user_card_detail, toggle_favorite, toggle_in_deck, upgrade_user_card
+from game.upgrade_calculator import get_upgrade_cost
+from sqlalchemy import func, and_
 
 from sqlalchemy import select
 
@@ -20,15 +23,13 @@ from database.crud import (
     open_pack,
     get_user_cards_paginated,
     get_user_collection,
-    start_expedition,
-    claim_expedition
 )
-from database.models.expedition import ExpeditionType
 from bot.keyboards import (
     main_menu_keyboard,
     collection_menu_keyboard,
     rarity_keyboard,
     collection_keyboard,
+    card_detail_keyboard,
 )
 
 router = Router()
@@ -182,7 +183,7 @@ async def show_rarity_collection(callback: types.CallbackQuery):
             cards, total, total_pages = await get_user_collection(
                 user.id,
                 page=page,
-                page_size=5,
+                page_size=10,
                 rarity_filter=rarity
             )
 
@@ -209,7 +210,8 @@ async def show_rarity_collection(callback: types.CallbackQuery):
 
             text += f"{status}<b>{card.card_name}</b>\n"
             text += f"   Уровень: {user_card.level} | 💪 {user_card.current_power}\n"
-            text += f"   🎬 {card.anime_name[:30]}...\n\n"
+            anime_name = card.anime_name[:20] + "..." if len(card.anime_name) > 20 else card.anime_name
+            text += f"   🎬 {anime_name}\n\n"
 
         text += f"<i>Страница {page} из {total_pages} • Всего {total} карт</i>"
 
@@ -416,15 +418,83 @@ async def cmd_help(message: types.Message):
 @router.callback_query(F.data.startswith("view_card_"))
 async def view_card_detail(callback: types.CallbackQuery):
     """Просмотр детальной информации о карте с изображением"""
-    card_id = int(callback.data.replace("view_card_", ""))
+    try:
+        card_id = int(callback.data.replace("view_card_", ""))
 
-    async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            select(UserCard, Card)
-            .join(Card, UserCard.card_id == Card.id)
-            .where(UserCard.id == card_id)
+        async with AsyncSessionLocal() as session:
+            # Получаем пользователя для проверки пыли
+            user = await get_user_or_create(session, callback.from_user.id)
+
+            # Получаем карту
+            result = await session.execute(
+                select(UserCard, Card)
+                .join(Card, UserCard.card_id == Card.id)
+                .where(UserCard.id == card_id)
+            )
+            data = result.first()
+
+            if not data:
+                await callback.answer("Карта не найдена", show_alert=True)
+                return
+
+            user_card, card = data
+
+            # Проверяем что карта принадлежит пользователю
+            if user_card.user_id != user.id:
+                await callback.answer("Эта карта вам не принадлежит", show_alert=True)
+                return
+
+            # Рассчитываем стоимость улучшения
+            upgrade_cost = get_upgrade_cost(card, user_card.level)
+            can_upgrade = user_card.level < 100 and user.dust >= upgrade_cost
+
+            # Статистика карты
+            text = f"""
+<b>✨ {card.card_name}</b>
+
+<b>📋 Информация:</b>
+🎭 Персонаж: {card.character_name or 'Неизвестно'}
+⭐ Редкость: {card.rarity}
+📺 Аниме: {card.anime_name or 'Неизвестно'}
+
+<b>⚔️ Характеристики:</b>
+💪 Сила: {user_card.current_power}
+❤️ Здоровье: {user_card.current_health}
+⚔️ Атака: {user_card.current_attack}
+🛡️ Защита: {user_card.current_defense}
+
+<b>📊 Прогресс:</b>
+📈 Уровень: {user_card.level}/100
+✨ Пыли для улучшения: {upgrade_cost}
+🔄 Улучшено раз: {user_card.times_upgraded}
+
+<b>🏆 Статус:</b>
+{'⚔️ В колоде' if user_card.is_in_deck else '📦 В коллекции'}
+{'⭐ Избранная' if user_card.is_favorite else '☆ Не избранная'}
+{'🏕️ В экспедиции' if user_card.is_in_expedition else '🏠 Доступна'}
+
+📅 Получена: {user_card.obtained_at.strftime('%d.%m.%Y')}
+        """
+
+        keyboard = card_detail_keyboard(
+            card_id=card_id,
+            is_favorite=user_card.is_favorite,
+            is_in_deck=user_card.is_in_deck,
+            can_upgrade=can_upgrade,
+            upgrade_cost=upgrade_cost,
+            user_dust=user.dust
         )
-        user_card, card = result.first()
+
+        await callback.message.answer_photo(
+            photo=card.original_url,
+            caption=text,
+            reply_markup=keyboard
+        )
+        await callback.answer()
+
+    except Exception as e:
+        logger.exception(f"Ошибка view_card_detail: {e}")
+        await callback.answer("❌ Произошла ошибка", show_alert=True)
 
     # Статистика карты
     text = f"""
@@ -597,3 +667,118 @@ async def cb_back_collection(callback: CallbackQuery):
 async def cancel_any(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer("Действие отменено")
+
+
+@router.callback_query(F.data.startswith("favorite_"))
+async def toggle_favorite_card(callback: types.CallbackQuery):
+    """Добавить/убрать карту из избранного"""
+    try:
+        card_id = int(callback.data.replace("favorite_", ""))
+
+        async with AsyncSessionLocal() as session:
+            user = await get_user_or_create(session, callback.from_user.id)
+
+            result = await session.execute(
+                select(UserCard)
+                .where(
+                    and_(
+                        UserCard.id == card_id,
+                        UserCard.user_id == user.id
+                    )
+                )
+            )
+            user_card = result.scalar_one_or_none()
+
+            if not user_card:
+                await callback.answer("Карта не найдена", show_alert=True)
+                return
+
+            user_card.is_favorite = not user_card.is_favorite
+            await session.commit()
+
+            status = "⭐ добавлена в избранное" if user_card.is_favorite else "☆ убрана из избранного"
+            await callback.answer(f"Карта {status}!")
+
+            # Обновляем сообщение
+            await view_card_detail(callback)
+
+    except Exception as e:
+        logger.exception(f"Ошибка toggle_favorite_card: {e}")
+        await callback.answer("❌ Произошла ошибка", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("deck_"))
+async def toggle_deck_card(callback: types.CallbackQuery):
+    """Добавить/убрать карту из колоды"""
+    try:
+        card_id = int(callback.data.replace("deck_", ""))
+
+        async with AsyncSessionLocal() as session:
+            user = await get_user_or_create(session, callback.from_user.id)
+
+            # Проверяем сколько карт уже в колоде
+            deck_count = await session.execute(
+                select(func.count())
+                .select_from(UserCard)
+                .where(
+                    and_(
+                        UserCard.user_id == user.id,
+                        UserCard.is_in_deck == True
+                    )
+                )
+            )
+            deck_count = deck_count.scalar()
+
+            result = await session.execute(
+                select(UserCard)
+                .where(
+                    and_(
+                        UserCard.id == card_id,
+                        UserCard.user_id == user.id
+                    )
+                )
+            )
+            user_card = result.scalar_one_or_none()
+
+            if not user_card:
+                await callback.answer("Карта не найдена", show_alert=True)
+                return
+
+            # Если добавляем в колоду, проверяем лимит
+            if not user_card.is_in_deck and deck_count >= 5:
+                await callback.answer("❌ В колоде может быть только 5 карт!", show_alert=True)
+                return
+
+            user_card.is_in_deck = not user_card.is_in_deck
+            await session.commit()
+
+            status = "⚔️ добавлена в колоду" if user_card.is_in_deck else "📦 убрана из колоды"
+            await callback.answer(f"Карта {status}!")
+
+            # Обновляем сообщение
+            await view_card_detail(callback)
+
+    except Exception as e:
+        logger.exception(f"Ошибка toggle_deck_card: {e}")
+        await callback.answer("❌ Произошла ошибка", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("upgrade_"))
+async def upgrade_card(callback: types.CallbackQuery):
+    """Улучшить карту"""
+    try:
+        card_id = int(callback.data.replace("upgrade_", ""))
+
+        # Улучшаем карту
+        user_card = await upgrade_user_card(card_id, callback.from_user.id)
+
+        await callback.answer(f"✨ Карта улучшена до {user_card.level} уровня!", show_alert=False)
+
+        # Обновляем сообщение
+        await view_card_detail(callback)
+
+    except ValueError as e:
+        await callback.answer(str(e), show_alert=True)
+    except Exception as e:
+        logger.exception(f"Ошибка upgrade_card: {e}")
+        await callback.answer("❌ Произошла ошибка", show_alert=True)

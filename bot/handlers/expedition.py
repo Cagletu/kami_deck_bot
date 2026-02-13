@@ -376,34 +376,40 @@ async def exped_list(callback: CallbackQuery):
                 return
         
             text = "<b>📋 МОИ ЭКСПЕДИЦИИ</b>\n\n"
-        
+
+            # Сначала незабранные (готовые)
             if uncollected:
                 text += f"<b>✅ ГОТОВО К ЗАБОРУ ({len(uncollected)}):</b>\n"
-                for exp in uncollected[:3]:
+                for exp in uncollected:
                     text += f"• {exp.name} - {exp.reward_coins}💰 {exp.reward_dust}✨\n"
                 text += "\n"
-        
+
+            # Потом активные
             if active:
                 now = datetime.now()
-                text += f"<b>⏳ АКТИВНЫЕ ({len(active)}):</b>\n"
+                text += f"<b> ⏳ АКТИВНЫЕ ({len(active)}): </b>\n"
                 for exp in active:
                     time_left = exp.ends_at - now
-                    minutes = int(time_left.total_seconds() / 60)
-                    hours = minutes // 60
-                    mins = minutes % 60
-        
-                    if hours > 0:
-                        time_str = f"{hours}ч {mins}м"
+                    total_seconds = int(time_left.total_seconds())
+
+                    if total_seconds <= 0:
+                        status = "✅ Успешна!"
                     else:
-                        time_str = f"{mins}м"
-        
-                    text += f"• {exp.name} - ⏳ {time_str}\n"
-        
-            await callback.message.edit_text(
+                        minutes = total_seconds // 60
+                        seconds = total_seconds % 60
+
+                        if minutes > 0:
+                            status = f"⏳ {minutes}м {seconds}с"
+                        else:
+                            status = f"⏳ {seconds}с"
+
+                    text += f"• {exp.name} - {status}\n"
+
+                await callback.message.edit_text(
                 text,
                 reply_markup=expedition_list_keyboard(active + uncollected, len(uncollected))
-            )
-            await callback.answer()
+                )
+                await callback.answer()
 
     except Exception as e:
         logger.exception(f"Ошибка exped_list: {e}")

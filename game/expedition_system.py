@@ -1,5 +1,6 @@
 import random
 from datetime import datetime, timedelta
+import math
 from typing import List, Tuple, Optional
 from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,6 +24,13 @@ class ExpeditionManager:
         user_id: int
     ) -> List[Tuple[UserCard, Card]]:
         """Получить карты доступные для экспедиции"""
+        
+        # Приоритет редкости: SSS > ASS > S > A > B > C > D > E
+        rarity_order = {
+            'SSS': 0, 'ASS': 1, 'S': 2, 'A': 3, 
+            'B': 4, 'C': 5, 'D': 6, 'E': 7
+        }
+        
         result = await session.execute(
             select(UserCard, Card)
             .join(Card, UserCard.card_id == Card.id)
@@ -31,12 +39,19 @@ class ExpeditionManager:
                 UserCard.is_in_expedition == False,  # Не в экспедиции
                 UserCard.is_in_deck == False         # Не в колоде
             )
-            .order_by(Card.rarity.desc(), UserCard.level.desc())
             .limit(50)
         )
 
         cards = result.all()
         logger.info(f"Доступных карт после фильтрации: {len(cards)}")
+
+        # сортировка по рангу → по уровню
+        cards.sort(
+            key=lambda x: (
+                rarity_order.get(x[1].rarity, 999),
+                -x[0].level
+            )
+        )
 
         return cards
 
@@ -107,12 +122,14 @@ class ExpeditionManager:
         # Множитель за количество карт (1-3x)
         card_multiplier = len(card_ids)
 
-        # Проверяем бонус за одно аниме
-        cards_result = await session.execute(
-            select(Card)
-            .join(UserCard, UserCard.card_id == Card.id)
-            .where(UserCard.id.in_(card_ids))
-        )
+        # Проверяем бонус за одно аниме (только если карт >= 2)
+        anime_bonus = False
+        if len(card_ids) >= 2:
+            cards_result = await session.execute(
+                select(Card)
+                .join(UserCard, UserCard.card_id == Card.id)
+                .where(UserCard.id.in_(card_ids))
+            )
         cards = cards_result.scalars().all()
         anime_set = set(c.anime_name for c in cards)
         anime_bonus = len(anime_set) == 1
@@ -120,8 +137,17 @@ class ExpeditionManager:
         if anime_bonus:
             card_multiplier = int(card_multiplier * 1.5)
 
-        # Шанс на карту
-        card_chance = min(duration_minutes // 60 * len(card_ids), 100)
+        # Шанс на карту: база 20% за карту в час + бонус за количество
+        base_chance_per_card_per_hour = 20  # 20% в час за карту
+        hours = duration_minutes / 60
+        card_chance = min(
+            int(hours * len(card_ids) * base_chance_per_card_per_hour),
+            100
+        )
+
+        # Если аниме бонус и карт >= 2, увеличиваем шанс
+        if anime_bonus and len(card_ids) >= 2:
+            card_chance = min(int(card_chance * 1.2), 100)  # +20% к шансу
 
         # Редкость карты
         if duration_minutes <= 30:
@@ -200,6 +226,13 @@ class ExpeditionManager:
                     logger.error(f"❌ Карта {card_id} не найдена")
             raise ValueError("Некоторые карты уже используются в экспедиции или колоде")
 
+        # Округляем время начала до текущего момента
+        now = datetime.now()
+        ends_at = now + timedelta(minutes=duration)
+
+        # Убеждаемся что ends_at точно в будущем
+        if ends_at <= now:
+            ends_at = now + timedelta(seconds=1)
 
         # Создаем экспедицию
         expedition = Expedition(
@@ -214,13 +247,13 @@ class ExpeditionManager:
             reward_card_chance=rewards["card_chance"],
             anime_bonus=rewards["anime_bonus"],
             rarity_bonus=rewards["multiplier"],
-            ends_at=datetime.now() + timedelta(minutes=duration),
+            ends_at=ends_at,
             status=ExpeditionStatus.ACTIVE,
             collected=False
         )
 
         session.add(expedition)
-        logger.info(f"➕ Экспедиция создана, ожидает flush")
+        logger.info("➕ Экспедиция создана, ожидает flush")
 
         # Пробуем flush чтобы увидеть ошибки до commit
         try:

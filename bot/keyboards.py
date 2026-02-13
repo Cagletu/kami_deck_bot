@@ -139,16 +139,19 @@ def expedition_cards_keyboard(cards: List[Tuple[UserCard, Card]], selected_ids: 
     """Клавиатура выбора карт для экспедиции"""
     builder = InlineKeyboardBuilder()
 
-    for user_card, card in cards[:9]:  # Максимум 9 карт
+    for user_card, card in cards[:20]:  # Максимум 20 карт
         card_id = user_card.id
         is_selected = card_id in selected_ids
 
         # Эмодзи статуса
         status = "✅ " if is_selected else ""
 
+        # Обрезаем длинные названия
+        card_name = card.card_name[:20] + "..." if len(card.card_name) > 20 else card.card_name
+
         builder.row(
             InlineKeyboardButton(
-                text=f"{status}{card.card_name} [{card.rarity}] Ур.{user_card.level}",
+                text=f"{status}{card_name} [{card.rarity}] Ур.{user_card.level}",
                 callback_data=f"exped_select_{card_id}"
             )
         )
@@ -173,7 +176,7 @@ def expedition_cards_keyboard(cards: List[Tuple[UserCard, Card]], selected_ids: 
     # Информация
     builder.row(
         InlineKeyboardButton(
-            text="ℹ️ Можно выбрать 1-3 карты",
+            text="ℹ️ Можно выбрать 1-3 карты | Бонус за 2+ карт из 1 аниме +50%",
             callback_data="noop"
         )
     )
@@ -237,6 +240,44 @@ def expedition_list_keyboard(expeditions: List, uncollected_count: int) -> Inlin
 
     builder.row(
         InlineKeyboardButton(text="« Назад", callback_data="expedition")
+    )
+
+    return builder.as_markup()
+
+def card_detail_keyboard(
+    card_id: int, 
+    is_favorite: bool, 
+    is_in_deck: bool,
+    can_upgrade: bool,
+    upgrade_cost: int = None,
+    user_dust: int = None
+) -> InlineKeyboardMarkup:
+    """Клавиатура для детального просмотра карты"""
+    builder = InlineKeyboardBuilder()
+
+    # Статусы
+    favorite_text = "⭐ Убрать" if is_favorite else "⭐ В избранное"
+    deck_text = "⚔️ Убрать из колоды" if is_in_deck else "⚔️ В колоду"
+
+    builder.row(
+        InlineKeyboardButton(text=favorite_text, callback_data=f"favorite_{card_id}"),
+        InlineKeyboardButton(text=deck_text, callback_data=f"deck_{card_id}")
+    )
+
+    # Кнопка улучшения
+    if can_upgrade and upgrade_cost and user_dust is not None:
+        if user_dust >= upgrade_cost:
+            upgrade_text = f"✨ Улучшить ({upgrade_cost}✨)"
+        else:
+            upgrade_text = f"✨ Не хватает пыли ({user_dust}/{upgrade_cost})"
+
+        builder.row(
+            InlineKeyboardButton(text=upgrade_text, callback_data=f"upgrade_{card_id}")
+        )
+
+    # Навигация
+    builder.row(
+        InlineKeyboardButton(text="« Назад в коллекцию", callback_data="back_to_collection")
     )
 
     return builder.as_markup()
