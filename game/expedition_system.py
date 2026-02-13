@@ -14,21 +14,23 @@ from database.base import AsyncSessionLocal
 class ExpeditionManager:
 
     @staticmethod
-    async def get_available_cards(session: AsyncSession, user_id: int) -> List[Tuple[UserCard, Card]]:
-        """Получить карты доступные для экспедиции"""
+    async def get_available_cards(
+        session: AsyncSession,
+        user_id: int
+    ) -> List[Tuple[UserCard, Card]]:
+
         result = await session.execute(
             select(UserCard, Card)
             .join(Card, UserCard.card_id == Card.id)
             .where(
-                and_(
-                    UserCard.user_id == user_id,
-                    not UserCard.is_in_expedition,
-                    not UserCard.is_in_deck
-                )
+                UserCard.user_id == user_id,
+                UserCard.is_in_expedition.is_(False),
+                UserCard.is_in_deck.is_(False)
             )
             .order_by(Card.rarity.desc(), UserCard.level.desc())
             .limit(50)
         )
+
         return result.all()
 
     @staticmethod
