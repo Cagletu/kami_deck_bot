@@ -155,9 +155,9 @@ class ExpeditionManager:
 
         # Длительность (исправить при проде)
         duration_map = {
-            "short": 1,  # 30,
-            "medium": 1,  # 120,
-            "long": 1  # 360
+            "short": 30,  # 30,
+            "medium": 120,  # 120,
+            "long": 360  # 360
         }
         duration = duration_map[duration_type]
 

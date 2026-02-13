@@ -221,7 +221,7 @@ def expedition_list_keyboard(expeditions: List, uncollected_count: int) -> Inlin
             minutes_left = int(time_left.total_seconds() / 60)
             status = f"⏳ {minutes_left} мин"
         else:
-            status = "✅ Готово!"
+            status = "Продолжается.. ⏳"
 
         builder.row(
             InlineKeyboardButton(

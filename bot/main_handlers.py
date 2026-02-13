@@ -335,8 +335,7 @@ async def collection_by_rarity(callback: types.CallbackQuery):
     try:
         await callback.message.edit_text(
             "<b>Выберите редкость для просмотра:</b>",
-            reply_markup=rarity_keyboard()
-        )
+            reply_markup=rarity_keyboard())
         await callback.answer()
     except Exception as e:
         logger.exception(f"Ошибка collection_by_rarity: {e}")
@@ -655,9 +654,9 @@ async def upgrade_card(callback: types.CallbackQuery):
 
             # Получаем карту
             result = await session.execute(
-                select(UserCard, Card)
-                .join(Card, UserCard.card_id == Card.id)
-                .where(UserCard.id == card_id))
+                select(UserCard, Card).join(
+                    Card,
+                    UserCard.card_id == Card.id).where(UserCard.id == card_id))
             data = result.first()
 
             if not data:
@@ -667,8 +666,11 @@ async def upgrade_card(callback: types.CallbackQuery):
             user_card, card = data
 
             if user_card.user_id != user.id:
-                logger.error(f"Карта {card_id} принадлежит {user_card.user_id}, а не {user.id}")
-                await callback.answer("❌ Карта не принадлежит вам", show_alert=True)
+                logger.error(
+                    f"Карта {card_id} принадлежит {user_card.user_id}, а не {user.id}"
+                )
+                await callback.answer("❌ Карта не принадлежит вам",
+                                      show_alert=True)
                 return
 
             # Проверка уровня
@@ -716,6 +718,59 @@ async def upgrade_card(callback: types.CallbackQuery):
     except Exception as e:
         logger.exception(f"Ошибка upgrade_card: {e}")
         await callback.answer("❌ Произошла ошибка", show_alert=True)
+
+
+@router.callback_query(F.data == "profile")
+async def callback_profile(callback: types.CallbackQuery):
+    try:
+        async with AsyncSessionLocal() as session:
+            user = await get_user_or_create(session, callback.from_user.id)
+
+        total_battles = user.arena_wins + user.arena_losses
+        win_rate = (user.arena_wins / total_battles *
+                    100) if total_battles > 0 else 0
+        time_in_game = datetime.now() - user.created_at
+        days = time_in_game.days
+        hours = time_in_game.seconds // 3600
+
+        stats = await get_collection_stats(user.id)
+
+        profile_text = f"""
+<b>📊 ПРОФИЛЬ ИГРОКА</b>
+
+<b>👤 Основное:</b>
+ID: <code>{user.id}</code>
+Имя: {user.first_name}
+Уровень: <code>{user.level}</code>
+
+<b>💰 Ресурсы:</b>
+Монеты: <code>{user.coins}</code>
+Пыль: <code>{user.dust}</code>
+Слотов экспедиций: <code>{user.expeditions_slots}</code>
+
+<b>🃏 Коллекция:</b>
+Всего карт: <code>{user.cards_opened or 0}</code>
+🏆 SSS: {stats.get('SSS', 0)} | ✨ ASS: {stats.get('ASS', 0)} | ⭐ S: {stats.get('S', 0)}
+🔮 A: {stats.get('A', 0)} | 💫 B: {stats.get('B', 0)} | ⚡ C: {stats.get('C', 0)}
+🟢 D: {stats.get('D', 0)} | ⚪ E: {stats.get('E', 0)}
+
+<b>🏆 Статистика:</b>
+Побед: <code>{user.arena_wins}</code>
+Поражений: <code>{user.arena_losses}</code>
+Винрейт: <code>{win_rate:.1f}%</code>
+Рейтинг: <code>{user.arena_rating}</code>
+
+<b>⏰ Время в игре:</b>
+В игре: {days} дней, {hours} часов
+"""
+        await callback.message.edit_text(profile_text)
+        await callback.answer()  # Убирает "часики" загрузки
+
+    except Exception as e:
+        logger.exception(f"Ошибка в хендлере callback_profile: {e}")
+        await callback.message.edit_text(
+            "❌ Произошла ошибка. Попробуйте позже.")
+        await callback.answer()
 
 
 # 4. Хендлер просмотра карты (самый общий - ПОСЛЕ всех специфичных)
