@@ -67,19 +67,6 @@ def rarity_keyboard() -> InlineKeyboardMarkup:
     )
     return builder.as_markup()
 
-def expedition_type_keyboard() -> InlineKeyboardMarkup:
-    """Выбор типа экспедиции"""
-    builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="🕐 30 мин", callback_data="expedition_short"),
-        InlineKeyboardButton(text="🕑 2 часа", callback_data="expedition_medium"),
-    )
-    builder.row(
-        InlineKeyboardButton(text="🕕 6 часов", callback_data="expedition_long"),
-        InlineKeyboardButton(text="« Назад", callback_data="back_to_main"),
-    )
-    return builder.as_markup()
-
 
 def collection_keyboard(page: int, has_next: bool, rarity: str = None) -> InlineKeyboardMarkup:
     """Клавиатура для пагинации коллекции с изображениями"""

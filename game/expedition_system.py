@@ -14,73 +14,72 @@ from database.base import AsyncSessionLocal
 class ExpeditionManager:
 
     @staticmethod
-    async def get_available_cards(user_id: int) -> List[Tuple[UserCard, Card]]:
+    async def get_available_cards(session: AsyncSession, user_id: int) -> List[Tuple[UserCard, Card]]:
         """Получить карты доступные для экспедиции"""
-        async with AsyncSessionLocal() as session:
-            result = await session.execute(
-                select(UserCard, Card)
-                .join(Card, UserCard.card_id == Card.id)
-                .where(
-                    and_(
-                        UserCard.user_id == user_id,
-                        not UserCard.is_in_expedition,
-                        not UserCard.is_in_deck
-                    )
+        result = await session.execute(
+            select(UserCard, Card)
+            .join(Card, UserCard.card_id == Card.id)
+            .where(
+                and_(
+                    UserCard.user_id == user_id,
+                    not UserCard.is_in_expedition,
+                    not UserCard.is_in_deck
                 )
-                .order_by(Card.rarity.desc(), UserCard.level.desc())
-                .limit(50)
             )
-            return result.all()
+            .order_by(Card.rarity.desc(), UserCard.level.desc())
+            .limit(50)
+        )
+        return result.all()
 
     @staticmethod
-    async def get_active_expeditions(user_id: int) -> Tuple[List[Expedition], List[Expedition]]:
+    async def get_active_expeditions(session: AsyncSession, user_id: int) -> Tuple[List[Expedition], List[Expedition]]:
         """Получить активные и завершенные экспедиции"""
-        async with AsyncSessionLocal() as session:
-            # Проверяем завершенные
-            now = datetime.now()
-            await session.execute(
-                Expedition.__table__.update()
-                .where(
-                    and_(
-                        Expedition.user_id == user_id,
-                        Expedition.status == ExpeditionStatus.ACTIVE,
-                        Expedition.ends_at <= now
-                    )
-                )
-                .values(status=ExpeditionStatus.COMPLETED)
-            )
-            await session.commit()
-
-            # Получаем активные
-            result = await session.execute(
-                select(Expedition)
-                .where(
-                    and_(
-                        Expedition.user_id == user_id,
-                        Expedition.status == ExpeditionStatus.ACTIVE
-                    )
-                )
-                .order_by(Expedition.ends_at)
-            )
-            active = result.scalars().all()
-
-            # Получаем незабранные
-            result = await session.execute(
-                select(Expedition)
-                .where(
-                    and_(
-                        Expedition.user_id == user_id,
-                        Expedition.status == ExpeditionStatus.COMPLETED,
-                        not Expedition.collected
-                    )
+        # Проверяем завершенные
+        now = datetime.now()
+        await session.execute(
+            Expedition.__table__.update()
+            .where(
+                and_(
+                    Expedition.user_id == user_id,
+                    Expedition.status == ExpeditionStatus.ACTIVE,
+                    Expedition.ends_at <= now
                 )
             )
-            uncollected = result.scalars().all()
+            .values(status=ExpeditionStatus.COMPLETED)
+        )
+        await session.commit()
 
-            return active, uncollected
+        # Получаем активные
+        result = await session.execute(
+            select(Expedition)
+            .where(
+                and_(
+                    Expedition.user_id == user_id,
+                    Expedition.status == ExpeditionStatus.ACTIVE
+                )
+            )
+            .order_by(Expedition.ends_at)
+        )
+        active = result.scalars().all()
+
+        # Получаем незабранные
+        result = await session.execute(
+            select(Expedition)
+            .where(
+                and_(
+                    Expedition.user_id == user_id,
+                    Expedition.status == ExpeditionStatus.COMPLETED,
+                    not Expedition.collected
+                )
+            )
+        )
+        uncollected = result.scalars().all()
+
+        return active, uncollected
 
     @staticmethod
     async def calculate_rewards(
+        session: AsyncSession,
         card_ids: List[int],
         duration_minutes: int
     ) -> dict:
@@ -93,15 +92,14 @@ class ExpeditionManager:
         card_multiplier = len(card_ids)
 
         # Проверяем бонус за одно аниме
-        async with AsyncSessionLocal() as session:
-            cards_result = await session.execute(
-                select(Card)
-                .join(UserCard, UserCard.card_id == Card.id)
-                .where(UserCard.id.in_(card_ids))
-            )
-            cards = cards_result.scalars().all()
-            anime_set = set(c.anime_name for c in cards)
-            anime_bonus = len(anime_set) == 1
+        cards_result = await session.execute(
+            select(Card)
+            .join(UserCard, UserCard.card_id == Card.id)
+            .where(UserCard.id.in_(card_ids))
+        )
+        cards = cards_result.scalars().all()
+        anime_set = set(c.anime_name for c in cards)
+        anime_bonus = len(anime_set) == 1
 
         if anime_bonus:
             card_multiplier = int(card_multiplier * 1.5)
@@ -128,6 +126,7 @@ class ExpeditionManager:
 
     @staticmethod
     async def start_expedition(
+        session: AsyncSession,
         user_id: int,
         card_ids: List[int],
         duration_type: str
@@ -140,8 +139,8 @@ class ExpeditionManager:
         # Длительность (исправить при проде)
         duration_map = {
             "short": 1, # 30,
-            "medium": 1, # 120,
-            "long": 1 # 360
+            "medium": 2, # 120,
+            "long": 3 # 360
         }
         duration = duration_map[duration_type]
 
@@ -149,114 +148,125 @@ class ExpeditionManager:
         rewards = await ExpeditionManager.calculate_rewards(card_ids, duration)
 
         # Создание экспедиции
-        async with AsyncSessionLocal() as session:
-            # Проверяем слоты
-            user = await session.get(User, user_id)
-            active, _ = await ExpeditionManager.get_active_expeditions(user_id)
+        # Проверяем слоты
+        user = await session.get(User, user_id)
+        active, _ = await ExpeditionManager.get_active_expeditions(user_id)
 
-            if len(active) >= user.expeditions_slots:
-                raise ValueError("Нет свободных слотов для экспедиции")
+        if len(active) >= user.expeditions_slots:
+            raise ValueError("Нет свободных слотов для экспедиции")
 
-            expedition = Expedition(
-                user_id=user_id,
-                name=f"Экспедиция {duration}мин ({len(card_ids)} карт)",
-                expedition_type=ExpeditionType(duration_type),
-                duration_minutes=duration,
-                card_ids=card_ids,
-                reward_coins=rewards["coins"],
-                reward_dust=rewards["dust"],
-                reward_card_rarity=rewards["card_rarity"],
-                reward_card_chance=rewards["card_chance"],
-                anime_bonus=rewards["anime_bonus"],
-                rarity_bonus=rewards["multiplier"],
-                ends_at=datetime.now() + timedelta(minutes=duration),
-                status=ExpeditionStatus.ACTIVE,
-                collected=False
+        cards_check = await session.execute(
+            select(UserCard)
+            .where(UserCard.id.in_(card_ids))
+            .where(UserCard.user_id == user_id)
+            .where(UserCard.is_in_expedition == False)
+        )
+
+        valid_cards = cards_check.scalars().all()
+
+        if len(valid_cards) != len(card_ids):
+            raise ValueError("Одна из карт уже используется")
+
+
+        expedition = Expedition(
+            user_id=user_id,
+            name=f"Экспедиция {duration}мин ({len(card_ids)} карт)",
+            expedition_type=ExpeditionType(duration_type),
+            duration_minutes=duration,
+            card_ids=card_ids,
+            reward_coins=rewards["coins"],
+            reward_dust=rewards["dust"],
+            reward_card_rarity=rewards["card_rarity"],
+            reward_card_chance=rewards["card_chance"],
+            anime_bonus=rewards["anime_bonus"],
+            rarity_bonus=rewards["multiplier"],
+            ends_at=datetime.now() + timedelta(minutes=duration),
+            status=ExpeditionStatus.ACTIVE,
+            collected=False
+        )
+
+        session.add(expedition)
+
+        # Помечаем карты
+        await session.execute(
+            UserCard.__table__.update()
+            .where(UserCard.id.in_(card_ids))
+            .values(
+                is_in_expedition=True,
+                expedition_end_time=expedition.ends_at
             )
+        )
 
-            session.add(expedition)
+        user.total_expeditions += 1
+        await session.commit()
+        await session.refresh(expedition)
 
-            # Помечаем карты
-            await session.execute(
-                UserCard.__table__.update()
-                .where(UserCard.id.in_(card_ids))
-                .values(
-                    is_in_expedition=True,
-                    expedition_end_time=expedition.ends_at
-                )
-            )
-
-            user.total_expeditions += 1
-            await session.commit()
-            await session.refresh(expedition)
-
-            return expedition
+        return expedition
 
     @staticmethod
-    async def claim_expedition(expedition_id: int) -> dict:
-        """Забрать награду одной экспедиции"""
-        async with AsyncSessionLocal() as session:
-            expedition = await session.get(Expedition, expedition_id)
+    async def claim_expedition(session: AsyncSession, expedition_id: int) -> dict:
+        """Забрать награду одной экспедиции""":
+        expedition = await session.get(Expedition, expedition_id)
 
-            if expedition.collected:
-                raise ValueError("Награда уже получена")
+        if expedition.collected:
+            raise ValueError("Награда уже получена")
 
-            if expedition.status != ExpeditionStatus.COMPLETED:
-                if expedition.ends_at > datetime.now():
-                    raise ValueError("Экспедиция еще не завершена")
-                expedition.status = ExpeditionStatus.COMPLETED
+        if expedition.status != ExpeditionStatus.COMPLETED:
+            if expedition.ends_at > datetime.now():
+                raise ValueError("Экспедиция еще не завершена")
+            expedition.status = ExpeditionStatus.COMPLETED
 
-            user = await session.get(User, expedition.user_id)
+        user = await session.get(User, expedition.user_id)
 
-            # Начисляем награды
-            user.coins += expedition.reward_coins
-            user.dust += expedition.reward_dust
+        # Начисляем награды
+        user.coins += expedition.reward_coins
+        user.dust += expedition.reward_dust
 
-            rewards = {
-                "coins": expedition.reward_coins,
-                "dust": expedition.reward_dust,
-                "card": None
-            }
+        rewards = {
+            "coins": expedition.reward_coins,
+            "dust": expedition.reward_dust,
+            "card": None
+        }
 
-            # Шанс на карту
-            if expedition.reward_card_rarity and random.randint(1, 100) <= expedition.reward_card_chance:
-                result = await session.execute(
-                    select(Card)
-                    .where(Card.rarity == expedition.reward_card_rarity)
-                    .order_by(func.random())
-                    .limit(1)
-                )
-                card = result.scalar_one_or_none()
-
-                if card:
-                    user_card = UserCard(
-                        user_id=user.id,
-                        card_id=card.id,
-                        level=1,
-                        source="expedition"
-                    )
-                    session.add(user_card)
-                    rewards["card"] = card
-
-                    # Обновляем счетчик карт
-                    user.cards_opened += 1
-
-            # Освобождаем карты
-            await session.execute(
-                UserCard.__table__.update()
-                .where(UserCard.id.in_(expedition.card_ids))
-                .values(
-                    is_in_expedition=False,
-                    expedition_end_time=None
-                )
+        # Шанс на карту
+        if expedition.reward_card_rarity and random.randint(1, 100) <= expedition.reward_card_chance:
+            result = await session.execute(
+                select(Card)
+                .where(Card.rarity == expedition.reward_card_rarity)
+                .order_by(func.random())
+                .limit(1)
             )
+            card = result.scalar_one_or_none()
 
-            expedition.collected = True
-            expedition.completed_at = datetime.now()
+            if card:
+                user_card = UserCard(
+                    user_id=user.id,
+                    card_id=card.id,
+                    level=1,
+                    source="expedition"
+                )
+                session.add(user_card)
+                rewards["card"] = card
 
-            await session.commit()
+                # Обновляем счетчик карт
+                user.cards_opened += 1
 
-            return rewards
+        # Освобождаем карты
+        await session.execute(
+            UserCard.__table__.update()
+            .where(UserCard.id.in_(expedition.card_ids))
+            .values(
+                is_in_expedition=False,
+                expedition_end_time=None
+            )
+        )
+
+        expedition.collected = True
+        expedition.completed_at = datetime.now()
+
+        await session.commit()
+
+        return rewards
 
     @staticmethod
     async def claim_all_expeditions(user_id: int) -> dict:

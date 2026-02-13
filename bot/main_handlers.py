@@ -4,6 +4,7 @@ from aiogram.filters import CommandStart, Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from datetime import datetime
 from database.base import AsyncSessionLocal
+from aiogram.fsm.context import FSMContext
 import logging
 
 from database.models.user import User
@@ -35,7 +36,8 @@ logger = logging.getLogger(__name__)
 
 # ===== START =====
 @router.message(CommandStart())
-async def cmd_start(message: types.Message):
+async def cmd_start(message: types.Message, state: FSMContext):
+    await state.clear()
     try:
         async with AsyncSessionLocal() as session:
             user = await get_user_or_create(
@@ -154,7 +156,7 @@ async def cmd_collection(message: types.Message):
 
 
 # Callback для редкости и возврата
-@router.callback_query(lambda c: c.data == "collection_by_rarity")
+@router.callback_query(F.data == "collection_by_rarity")
 async def collection_by_rarity(callback: types.CallbackQuery):
     try:
         await callback.message.edit_text(
@@ -167,7 +169,7 @@ async def collection_by_rarity(callback: types.CallbackQuery):
         await callback.answer("❌ Произошла ошибка.")
 
 
-@router.callback_query(lambda c: c.data.startswith("rarity_"))
+@router.callback_query(F.data.startswith("rarity_"))
 async def show_rarity_collection(callback: types.CallbackQuery):
     try:
         # Парсим callback_data: rarity_SSS_1 или rarity_SSS
@@ -249,7 +251,7 @@ async def show_rarity_collection(callback: types.CallbackQuery):
         await callback.answer("❌ Произошла ошибка.")
 
 
-@router.callback_query(lambda c: c.data == "back_to_collection")
+@router.callback_query(F.data == "back_to_collection")
 async def back_to_collection(callback: types.CallbackQuery):
     try:
         await cmd_collection(callback.message)
@@ -411,7 +413,7 @@ async def cmd_help(message: types.Message):
         await message.answer("❌ Произошла ошибка. Попробуйте позже.")
 
 
-@router.callback_query(lambda c: c.data.startswith("view_card_"))
+@router.callback_query(F.data.startswith("view_card_"))
 async def view_card_detail(callback: types.CallbackQuery):
     """Просмотр детальной информации о карте с изображением"""
     card_id = int(callback.data.replace("view_card_", ""))
@@ -499,7 +501,7 @@ async def cb_open_pack(callback: types.CallbackQuery):
             emoji = {'E':'⚪','D':'🟢','C':'⚡','B':'💫','A':'🔮','S':'⭐','ASS':'✨','SSS':'🏆'}.get(card.rarity,'🃏')
             text += f"{emoji} <b>{card.card_name}</b> [{card.rarity}]\n"
         if pack_open.guaranteed_rarity:
-            text += f"\n🎁 <b>ГАРАНТИЯ!</b> Вам выпала {pack_open.guaranteed_rarity} карта!"
+            text += f"\n🎁 <b>ГАРАНТ!</b> Вам выпала {pack_open.guaranteed_rarity} карта!"
 
         await callback.message.answer_photo(photo=cards[0].original_url, caption=text)
 
@@ -565,20 +567,7 @@ async def cb_collection_page(callback: CallbackQuery):
         await callback.answer("❌ Произошла ошибка.", show_alert=True)
 
 
-# @router.callback_query(F.data == "expedition")
-# async def cb_expedition_menu(callback: CallbackQuery):
-#     try:
-#         await callback.message.edit_text(
-#             "🏕️ Выберите тип экспедиции:",
-#             reply_markup=expedition_type_keyboard()
-#         )
-#         await callback.answer()
-#     except Exception as e:
-#         logger.exception(f"Ошибка cb_expedition_menu: {e}")
-#         await callback.answer("❌ Произошла ошибка.")
-
-
-@router.callback_query(F.data == "back_to_main")
+@router.callback_query(F.data == "back_to_main", state = "*")
 async def cb_back_main(callback: CallbackQuery):
     try:
         await callback.message.edit_text(
@@ -602,3 +591,9 @@ async def cb_back_collection(callback: CallbackQuery):
     except Exception as e:
         logger.exception(f"Ошибка cb_back_collection: {e}")
         await callback.answer("❌ Произошла ошибка.")
+
+
+@router.message(Command("cancel"), state="*")
+async def cancel_any(message: types.Message, state: FSMContext):
+    await state.clear()
+    await message.answer("Действие отменено")

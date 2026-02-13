@@ -73,14 +73,8 @@ async def cmd_expedition(message: Message):
         logger.exception(f"Ошибка cmd_expedition: {e}")
         await message.answer("❌ Произошла ошибка. Попробуйте позже.")
 
-# ВРЕМЕННОООООООООООООООООООООООО
-@router.callback_query()
-async def debug_all_callbacks(callback: CallbackQuery):
-    """ВРЕМЕННО: отладка всех callback"""
-    print(f"🔍 Получен callback: {callback.data}")
 
-
-@router.callback_query(F.data == "expedition")
+@router.callback_query(F.data == "expedition", state="*")
 async def exped_main_menu(callback: CallbackQuery):
     """Возврат в главное меню экспедиций"""
     try:
@@ -190,38 +184,38 @@ async def exped_new_start(callback: CallbackQuery, state: FSMContext):
 async def exped_select_card(callback: CallbackQuery, state: FSMContext):
     """Выбор/отмена выбора карты"""
     try:
-        card_id = int(callback.data.replace("exped_select_", ""))
+        card_id = int(callback.data.split("_")[-1])
 
         # Получаем текущее состояние
         data = await state.get_data()
-        selected = data.get("selected_cards", [])
+        selected = set(data.get("selected_cards", [])) # data.get("selected_cards", [])
 
         # Добавляем или удаляем
         if card_id in selected:
             selected.remove(card_id)
+            action = "❌ Удалена"
         else:
             if len(selected) >= 3:
-                await callback.answer("❌ Можно выбрать только 3 карты!", show_alert=True)
+                await callback.answer("Можно выбрать только 3 карты!", show_alert=True)
                 return
-            selected.append(card_id)
+            selected.add(card_id)
+            action = "✅ Добавлена"
 
         # Сохраняем
-        await state.update_data(selected_cards=selected)
+        await state.update_data(selected_cards=list(selected))
 
-        # Обновляем клавиатуру
-        cards = await ExpeditionManager.get_available_cards(callback.from_user.id)
+        async with AsyncSessionLocal() as session:
+            cards = await ExpeditionManager.get_available_cards(session, callback.from_user.id)
+
         await callback.message.edit_reply_markup(
-            reply_markup=expedition_cards_keyboard(cards, selected)
+            reply_markup=expedition_cards_keyboard(cards, list(selected))
         )
 
-        await callback.answer(
-            f"{'✅ Добавлена' if card_id in selected else '❌ Удалена'}",
-            show_alert=False
-        )
+        await callback.answer(action)
 
-    except Exception as e:
-        logger.exception(f"Ошибка exped_select_card: {e}")
-        await callback.answer("❌ Произошла ошибка", show_alert=True)
+    except Exception:
+        logger.exception("Ошибка выбора карты")
+        await callback.answer("Ошибка", show_alert=True)
 
 
 @router.callback_query(F.data == "exped_confirm_cards", StateFilter(ExpeditionStates.choosing_cards))
@@ -238,33 +232,34 @@ async def exped_confirm_cards(callback: CallbackQuery, state: FSMContext):
 
         # Рассчитываем награды для показа
         duration_map = {"short": 30, "medium": 120, "long": 360}
-        rewards = await ExpeditionManager.calculate_rewards(selected, duration_map[duration])
-
-        duration_names = {"short": "30 минут", "medium": "2 часа", "long": "6 часов"}
-
-        text = f"""
-<b>🏕️ ПОДТВЕРЖДЕНИЕ ЭКСПЕДИЦИИ</b>
-
-📊 <b>Детали:</b>
-• Длительность: {duration_names[duration]}
-• Карт: {len(selected)} шт.
-• Бонус аниме: {'✅ +50%' if rewards['anime_bonus'] else '❌ нет'}
-
-💰 <b>Награды:</b>
-• Монеты: {rewards['coins']}
-• Пыль: {rewards['dust']}
-• Карта: {rewards['card_chance']}% ({rewards['card_rarity']})
-
-✅ Отправляем в экспедицию?
-"""
-        await state.set_state(ExpeditionStates.confirm)
-
-        await callback.message.edit_text(
-            text,
-            reply_markup=expedition_confirm_keyboard(duration, len(selected))
-        )
-        await callback.answer()
-
+        async with AsyncSessionLocal() as session:
+            rewards = await ExpeditionManager.calculate_rewards(selected, duration_map[duration])
+    
+            duration_names = {"short": "30 минут", "medium": "2 часа", "long": "6 часов"}
+    
+            text = f"""
+    <b>🏕️ ПОДТВЕРЖДЕНИЕ ЭКСПЕДИЦИИ</b>
+    
+    📊 <b>Детали:</b>
+    • Длительность: {duration_names[duration]}
+    • Карт: {len(selected)} шт.
+    • Бонус аниме: {'✅ +50%' if rewards['anime_bonus'] else '❌ нет'}
+    
+    💰 <b>Награды:</b>
+    • Монеты: {rewards['coins']}
+    • Пыль: {rewards['dust']}
+    • Карта: {rewards['card_chance']}% ({rewards['card_rarity']})
+    
+    ✅ Отправляем в экспедицию?
+    """
+            await state.set_state(ExpeditionStates.confirm)
+    
+            await callback.message.edit_text(
+                text,
+                reply_markup=expedition_confirm_keyboard(session, duration, len(selected))
+            )
+            await callback.answer()
+    
     except Exception as e:
         logger.exception(f"Ошибка exped_confirm_cards: {e}")
         await callback.answer("❌ Произошла ошибка", show_alert=True)
@@ -284,44 +279,46 @@ async def exped_start_final(callback: CallbackQuery, state: FSMContext):
             return
 
         # Запускаем экспедицию
-        expedition = await ExpeditionManager.start_expedition(
-            callback.from_user.id,
-            selected,
-            duration
-        )
-
-        # Получаем время окончания
-        end_time = expedition.ends_at.strftime("%H:%M %d.%m.%Y")
-        time_left = expedition.ends_at - datetime.now()
-        hours = time_left.seconds // 3600
-        minutes = (time_left.seconds % 3600) // 60
-
-        text = f"""
-<b>✅ ЭКСПЕДИЦИЯ НАЧАТА!</b>
-
-📊 <b>Информация:</b>
-• Карт: {len(selected)} шт.
-• Окончание: {end_time}
-• Осталось: {hours}ч {minutes}м
-
-💰 <b>Ожидаемые награды:</b>
-• Монеты: {expedition.reward_coins}
-• Пыль: {expedition.reward_dust}
-• Шанс карты: {expedition.reward_card_chance}%
-
-💡 <b>Совет:</b>
-Возвращайтесь через {hours}ч {minutes}м за наградой!
-"""
-        # Очищаем состояние
-        await state.clear()
-
-        await callback.message.edit_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🏠 В меню экспедиций", callback_data="expedition")]
-            ])
-        )
-        await callback.answer("Экспедиция начата! 🎉")
+        async with AsyncSessionLocal() as session:
+            expedition = await ExpeditionManager.start_expedition(
+                session,
+                callback.from_user.id,
+                selected,
+                duration
+            )
+        
+            # Получаем время окончания
+            end_time = expedition.ends_at.strftime("%H:%M %d.%m.%Y")
+            time_left = expedition.ends_at - datetime.now()
+            hours = time_left.seconds // 3600
+            minutes = (time_left.seconds % 3600) // 60
+        
+            text = f"""
+        <b>✅ ЭКСПЕДИЦИЯ НАЧАТА!</b>
+        
+        📊 <b>Информация:</b>
+        • Карт: {len(selected)} шт.
+        • Окончание: {end_time}
+        • Осталось: {hours}ч {minutes}м
+        
+        💰 <b>Ожидаемые награды:</b>
+        • Монеты: {expedition.reward_coins}
+        • Пыль: {expedition.reward_dust}
+        • Шанс карты: {expedition.reward_card_chance}%
+        
+        💡 <b>Совет:</b>
+        Возвращайтесь через {hours}ч {minutes}м за наградой!
+        """
+            # Очищаем состояние
+            await state.clear()
+        
+            await callback.message.edit_text(
+                text,
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🏠 В меню экспедиций", callback_data="expedition")]
+                ])
+            )
+            await callback.answer("Экспедиция начата! 🎉")
 
     except ValueError as e:
         await callback.answer(str(e), show_alert=True)
@@ -332,60 +329,61 @@ async def exped_start_final(callback: CallbackQuery, state: FSMContext):
         await state.clear()
 
 
-@router.callback_query(F.data == "exped_list")
+@router.callback_query(F.data == "exped_list", state="*")
 async def exped_list(callback: CallbackQuery):
     """Список активных экспедиций"""
     try:
-        active, uncollected = await ExpeditionManager.get_active_expeditions(callback.from_user.id)
-
-        if not active and not uncollected:
+        async with AsyncSessionLocal() as session:
+            active, uncollected = await ExpeditionManager.get_active_expeditions(session, callback.from_user.id)
+        
+            if not active and not uncollected:
+                await callback.message.edit_text(
+                    "📋 <b>У вас нет активных экспедиций</b>\n\n"
+                    "Начните новую экспедицию!",
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                        [InlineKeyboardButton(text="🏕️ Новая экспедиция", callback_data="exped_new_short")],
+                        [InlineKeyboardButton(text="« Назад", callback_data="expedition")]
+                    ])
+                )
+                await callback.answer()
+                return
+        
+            text = "<b>📋 МОИ ЭКСПЕДИЦИИ</b>\n\n"
+        
+            if uncollected:
+                text += f"<b>✅ ГОТОВО К ЗАБОРУ ({len(uncollected)}):</b>\n"
+                for exp in uncollected[:3]:
+                    text += f"• {exp.name} - {exp.reward_coins}💰 {exp.reward_dust}✨\n"
+                text += "\n"
+        
+            if active:
+                now = datetime.now()
+                text += f"<b>⏳ АКТИВНЫЕ ({len(active)}):</b>\n"
+                for exp in active:
+                    time_left = exp.ends_at - now
+                    minutes = int(time_left.total_seconds() / 60)
+                    hours = minutes // 60
+                    mins = minutes % 60
+        
+                    if hours > 0:
+                        time_str = f"{hours}ч {mins}м"
+                    else:
+                        time_str = f"{mins}м"
+        
+                    text += f"• {exp.name} - ⏳ {time_str}\n"
+        
             await callback.message.edit_text(
-                "📋 <b>У вас нет активных экспедиций</b>\n\n"
-                "Начните новую экспедицию!",
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="🏕️ Новая экспедиция", callback_data="exped_new_short")],
-                    [InlineKeyboardButton(text="« Назад", callback_data="expedition")]
-                ])
+                text,
+                reply_markup=expedition_list_keyboard(active + uncollected, len(uncollected))
             )
             await callback.answer()
-            return
-
-        text = "<b>📋 МОИ ЭКСПЕДИЦИИ</b>\n\n"
-
-        if uncollected:
-            text += f"<b>✅ ГОТОВО К ЗАБОРУ ({len(uncollected)}):</b>\n"
-            for exp in uncollected[:3]:
-                text += f"• {exp.name} - {exp.reward_coins}💰 {exp.reward_dust}✨\n"
-            text += "\n"
-
-        if active:
-            now = datetime.now()
-            text += f"<b>⏳ АКТИВНЫЕ ({len(active)}):</b>\n"
-            for exp in active:
-                time_left = exp.ends_at - now
-                minutes = int(time_left.total_seconds() / 60)
-                hours = minutes // 60
-                mins = minutes % 60
-
-                if hours > 0:
-                    time_str = f"{hours}ч {mins}м"
-                else:
-                    time_str = f"{mins}м"
-
-                text += f"• {exp.name} - ⏳ {time_str}\n"
-
-        await callback.message.edit_text(
-            text,
-            reply_markup=expedition_list_keyboard(active + uncollected, len(uncollected))
-        )
-        await callback.answer()
 
     except Exception as e:
         logger.exception(f"Ошибка exped_list: {e}")
         await callback.answer("❌ Произошла ошибка", show_alert=True)
 
 
-@router.callback_query(F.data == "exped_claim_all")
+@router.callback_query(F.data == "exped_claim_all", state="*")
 async def exped_claim_all(callback: CallbackQuery):
     """Забрать награды всех экспедиций"""
     try:
@@ -422,7 +420,7 @@ async def exped_claim_all(callback: CallbackQuery):
         await callback.answer("❌ Произошла ошибка", show_alert=True)
 
 
-@router.callback_query(F.data == "exped_back_to_cards")
+@router.callback_query(F.data == "exped_back_to_cards", state="*")
 async def exped_back_to_cards(callback: CallbackQuery, state: FSMContext):
     """Вернуться к выбору карт"""
     try:
@@ -430,29 +428,30 @@ async def exped_back_to_cards(callback: CallbackQuery, state: FSMContext):
         selected = data.get("selected_cards", [])
 
         await state.set_state(ExpeditionStates.choosing_cards)
-
-        cards = await ExpeditionManager.get_available_cards(callback.from_user.id)
-
-        text = """
-<b>🏕️ ВЫБЕРИТЕ КАРТЫ</b>
-
-Можно выбрать от 1 до 3 карт.
-✅ - карта выбрана
-
-💡 <b>Бонус +50%</b> если все карты из одного аниме!
-"""
-        await callback.message.edit_text(
-            text,
-            reply_markup=expedition_cards_keyboard(cards, selected)
-        )
-        await callback.answer()
+        
+        async with AsyncSessionLocal() as session:
+            cards = await ExpeditionManager.get_available_cards(session, callback.from_user.id)
+    
+            text = """
+    <b>🏕️ ВЫБЕРИТЕ КАРТЫ</b>
+    
+    Можно выбрать от 1 до 3 карт.
+    ✅ - карта выбрана
+    
+    💡 <b>Бонус +50%</b> если все карты из одного аниме!
+    """
+            await callback.message.edit_text(
+                text,
+                reply_markup=expedition_cards_keyboard(cards, selected)
+            )
+            await callback.answer()
 
     except Exception as e:
         logger.exception(f"Ошибка exped_back_to_cards: {e}")
         await callback.answer("❌ Произошла ошибка", show_alert=True)
 
 
-@router.callback_query(F.data == "exped_cancel")
+@router.callback_query(F.data == "exped_cancel", state="*")
 async def exped_cancel(callback: CallbackQuery, state: FSMContext):
     """Отмена создания экспедиции"""
     await state.clear()

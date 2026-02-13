@@ -245,6 +245,9 @@ async def _open_pack_transaction(user_id: int, pack_type: str, session: AsyncSes
         )
         session.add(user_card)
 
+        # 🔥 Увеличиваем счётчик открытых карт
+        user.cards_opened += 1
+
         # обновляем pity
         if rarity == "A":
             pity_a = 0
