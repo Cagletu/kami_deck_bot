@@ -265,14 +265,19 @@ def card_detail_keyboard(
     )
 
     # Кнопка улучшения
-    if can_upgrade and upgrade_cost and user_dust is not None:
-        if user_dust >= upgrade_cost:
-            upgrade_text = f"✨ Улучшить ({upgrade_cost}✨)"
-        else:
-            upgrade_text = f"✨ Не хватает пыли ({user_dust}/{upgrade_cost})"
-
+    if can_upgrade and upgrade_cost:
         builder.row(
-            InlineKeyboardButton(text=upgrade_text, callback_data=f"upgrade_{card_id}")
+            InlineKeyboardButton(
+                text=f"✨ Улучшить ({upgrade_cost}✨)", 
+                callback_data=f"upgrade_{card_id}"
+            )
+        )
+    elif upgrade_cost and user_dust is not None:
+        builder.row(
+            InlineKeyboardButton(
+                text=f"✨ Не хватает ({user_dust}/{upgrade_cost}✨)", 
+                callback_data="noop"
+            )
         )
 
     # Навигация

@@ -172,6 +172,7 @@ async def collection_by_rarity(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("rarity_"))
 async def show_rarity_collection(callback: types.CallbackQuery):
+    """Показать коллекцию карт по редкости"""
     try:
         # Парсим callback_data: rarity_SSS_1 или rarity_SSS
         parts = callback.data.split("_")
@@ -183,7 +184,7 @@ async def show_rarity_collection(callback: types.CallbackQuery):
             cards, total, total_pages = await get_user_collection(
                 user.id,
                 page=page,
-                page_size=10,
+                page_size=5,  # Показываем по 5 карт на странице
                 rarity_filter=rarity
             )
 
@@ -198,8 +199,14 @@ async def show_rarity_collection(callback: types.CallbackQuery):
             await callback.answer()
             return
 
+        # Формируем текст
         text = f"<b>📊 Карты редкости {rarity}</b>\n\n"
+
+        # Сохраняем ID карт для кнопок просмотра
+        card_ids = []
+
         for i, (user_card, card) in enumerate(cards, 1):
+            # Статус карты
             status = ""
             if user_card.is_favorite:
                 status = "⭐ "
@@ -208,17 +215,26 @@ async def show_rarity_collection(callback: types.CallbackQuery):
             elif user_card.is_in_expedition:
                 status = "🏕️ "
 
-            text += f"{status}<b>{card.card_name}</b>\n"
-            text += f"   Уровень: {user_card.level} | 💪 {user_card.current_power}\n"
-            anime_name = card.anime_name[:20] + "..." if len(card.anime_name) > 20 else card.anime_name
-            text += f"   🎬 {anime_name}\n\n"
+            # Обрезаем длинные названия аниме
+            anime_name = card.anime_name
+            if anime_name and len(anime_name) > 25:
+                anime_name = anime_name[:22] + "..."
+
+            # Добавляем информацию о карте
+            text += f"{i}. {status}<b>{card.card_name}</b>\n"
+            text += f"   📈 Ур.{user_card.level} | 💪 {user_card.current_power}\n"
+            text += f"   🎬 {anime_name or 'Неизвестно'}\n\n"
+
+            # Сохраняем ID для кнопки
+            card_ids.append(user_card.id)
 
         text += f"<i>Страница {page} из {total_pages} • Всего {total} карт</i>"
 
-        # Клавиатура с пагинацией
+        # Строим клавиатуру
         keyboard = []
-        nav_buttons = []
 
+        # Кнопки навигации по страницам
+        nav_buttons = []
         if page > 1:
             nav_buttons.append(InlineKeyboardButton(
                 text="◀️", 
@@ -237,6 +253,18 @@ async def show_rarity_collection(callback: types.CallbackQuery):
             ))
 
         keyboard.append(nav_buttons)
+
+        # Кнопки просмотра карт (максимум 5)
+        view_row = []
+        for idx, card_id in enumerate(card_ids[:5], 1):
+            view_row.append(InlineKeyboardButton(
+                text=f"🔍 {idx}", 
+                callback_data=f"view_card_{card_id}"
+            ))
+        if view_row:
+            keyboard.append(view_row)
+
+        # Кнопки навигации по меню
         keyboard.append([
             InlineKeyboardButton(text="« К редкостям", callback_data="collection_by_rarity"),
             InlineKeyboardButton(text="🏠 В меню", callback_data="back_to_collection")
@@ -422,10 +450,8 @@ async def view_card_detail(callback: types.CallbackQuery):
         card_id = int(callback.data.replace("view_card_", ""))
 
         async with AsyncSessionLocal() as session:
-            # Получаем пользователя для проверки пыли
             user = await get_user_or_create(session, callback.from_user.id)
 
-            # Получаем карту
             result = await session.execute(
                 select(UserCard, Card)
                 .join(Card, UserCard.card_id == Card.id)
@@ -439,12 +465,12 @@ async def view_card_detail(callback: types.CallbackQuery):
 
             user_card, card = data
 
-            # Проверяем что карта принадлежит пользователю
             if user_card.user_id != user.id:
                 await callback.answer("Эта карта вам не принадлежит", show_alert=True)
                 return
 
-            # Рассчитываем стоимость улучшения
+            # Рассчитываем стоимость улучшения с вашими формулами
+            from game.upgrade_calculator import get_upgrade_cost
             upgrade_cost = get_upgrade_cost(card, user_card.level)
             can_upgrade = user_card.level < 100 and user.dust >= upgrade_cost
 
@@ -458,14 +484,14 @@ async def view_card_detail(callback: types.CallbackQuery):
 📺 Аниме: {card.anime_name or 'Неизвестно'}
 
 <b>⚔️ Характеристики:</b>
-💪 Сила: {user_card.current_power}
-❤️ Здоровье: {user_card.current_health}
-⚔️ Атака: {user_card.current_attack}
-🛡️ Защита: {user_card.current_defense}
+💪 Сила: {user_card.current_power:,}
+❤️ Здоровье: {user_card.current_health:,}
+⚔️ Атака: {user_card.current_attack:,}
+🛡️ Защита: {user_card.current_defense:,}
 
 <b>📊 Прогресс:</b>
 📈 Уровень: {user_card.level}/100
-✨ Пыли для улучшения: {upgrade_cost}
+✨ Стоимость улучшения: {upgrade_cost} пыли
 🔄 Улучшено раз: {user_card.times_upgraded}
 
 <b>🏆 Статус:</b>
@@ -474,8 +500,10 @@ async def view_card_detail(callback: types.CallbackQuery):
 {'🏕️ В экспедиции' if user_card.is_in_expedition else '🏠 Доступна'}
 
 📅 Получена: {user_card.obtained_at.strftime('%d.%m.%Y')}
-        """
+📊 Прогресс до следующего уровня: {user_card.level + 1}/100
+            """
 
+        from bot.keyboards import card_detail_keyboard
         keyboard = card_detail_keyboard(
             card_id=card_id,
             is_favorite=user_card.is_favorite,
@@ -495,53 +523,6 @@ async def view_card_detail(callback: types.CallbackQuery):
     except Exception as e:
         logger.exception(f"Ошибка view_card_detail: {e}")
         await callback.answer("❌ Произошла ошибка", show_alert=True)
-
-    # Статистика карты
-    text = f"""
-<b>✨ {card.card_name}</b>
-
-<b>📋 Информация:</b>
-🎭 Персонаж: {card.character_name}
-⭐ Редкость: {card.rarity}
-📺 Аниме: {card.anime_name}
-
-<b>⚔️ Характеристики:</b>
-💪 Сила: {user_card.current_power}
-❤️ Здоровье: {user_card.current_health}
-⚔️ Атака: {user_card.current_attack}
-🛡️ Защита: {user_card.current_defense}
-
-<b>📊 Прогресс:</b>
-📈 Уровень: {user_card.level}
-✨ Очков улучшения: {user_card.upgrade_points}
-🔄 Улучшено раз: {user_card.times_upgraded}
-
-<b>🏆 Статус:</b>
-{'⚔️ В колоде' if user_card.is_in_deck else '📦 В коллекции'}
-{'⭐ Избранная' if user_card.is_favorite else ''}
-{'🏕️ В экспедиции' if user_card.is_in_expedition else ''}
-
-📅 Получена: {user_card.obtained_at.strftime('%d.%m.%Y')}
-    """
-
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="⭐ В избранное", callback_data=f"favorite_{card_id}"),
-            InlineKeyboardButton(text="⚔️ В колоду", callback_data=f"add_to_deck_{card_id}")
-        ],
-        [
-            InlineKeyboardButton(text="✨ Улучшить", callback_data=f"upgrade_{card_id}"),
-            InlineKeyboardButton(text="💎 Распылить", callback_data=f"dust_{card_id}")
-        ],
-        [InlineKeyboardButton(text="« Назад", callback_data="back_to_collection")]
-    ])
-
-    await callback.message.answer_photo(
-        photo=card.original_url,
-        caption=text,
-        reply_markup=keyboard
-    )
-    await callback.answer()
 
 
 # ===== CALLBACKS =====
@@ -769,16 +750,60 @@ async def upgrade_card(callback: types.CallbackQuery):
     try:
         card_id = int(callback.data.replace("upgrade_", ""))
 
-        # Улучшаем карту
-        user_card = await upgrade_user_card(card_id, callback.from_user.id)
+        async with AsyncSessionLocal() as session:
+            # Получаем карту
+            result = await session.execute(
+                select(UserCard, Card)
+                .join(Card, UserCard.card_id == Card.id)
+                .where(UserCard.id == card_id)
+            )
+            data = result.first()
 
-        await callback.answer(f"✨ Карта улучшена до {user_card.level} уровня!", show_alert=False)
+            if not data:
+                await callback.answer("Карта не найдена", show_alert=True)
+                return
 
-        # Обновляем сообщение
-        await view_card_detail(callback)
+            user_card, card = data
+            user = await session.get(User, callback.from_user.id)
 
-    except ValueError as e:
-        await callback.answer(str(e), show_alert=True)
+            if user_card.user_id != user.id:
+                await callback.answer("Карта не принадлежит вам", show_alert=True)
+                return
+
+            # Проверка уровня
+            if user_card.level >= 100:
+                await callback.answer("Карта уже максимального уровня!", show_alert=True)
+                return
+
+            # Расчет стоимости
+            from game.upgrade_calculator import get_upgrade_cost
+            upgrade_cost = get_upgrade_cost(card, user_card.level)
+
+            if user.dust < upgrade_cost:
+                await callback.answer(f"❌ Не хватает пыли! Нужно: {upgrade_cost}", show_alert=True)
+                return
+
+            # Улучшаем
+            user.dust -= upgrade_cost
+            user_card.level += 1
+            user_card.times_upgraded += 1
+
+            # Пересчитываем характеристики
+            from game.upgrade_calculator import calculate_stats_for_level
+            new_stats = calculate_stats_for_level(card, user_card.level)
+
+            user_card.current_power = new_stats['power']
+            user_card.current_health = new_stats['health']
+            user_card.current_attack = new_stats['attack']
+            user_card.current_defense = new_stats['defense']
+
+            await session.commit()
+
+            await callback.answer(f"✨ Карта улучшена до {user_card.level} уровня!", show_alert=False)
+
+            # Обновляем отображение
+            await view_card_detail(callback)
+
     except Exception as e:
         logger.exception(f"Ошибка upgrade_card: {e}")
         await callback.answer("❌ Произошла ошибка", show_alert=True)
