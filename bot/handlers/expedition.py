@@ -74,7 +74,7 @@ async def cmd_expedition(message: Message):
         await message.answer("❌ Произошла ошибка. Попробуйте позже.")
 
 
-@router.callback_query(F.data == "expedition", state="*")
+@router.callback_query(F.data == "expedition", StateFilter("*"))
 async def exped_main_menu(callback: CallbackQuery):
     """Возврат в главное меню экспедиций"""
     try:
@@ -329,7 +329,7 @@ async def exped_start_final(callback: CallbackQuery, state: FSMContext):
         await state.clear()
 
 
-@router.callback_query(F.data == "exped_list", state="*")
+@router.callback_query(F.data == "exped_list", StateFilter("*"))
 async def exped_list(callback: CallbackQuery):
     """Список активных экспедиций"""
     try:
@@ -383,7 +383,7 @@ async def exped_list(callback: CallbackQuery):
         await callback.answer("❌ Произошла ошибка", show_alert=True)
 
 
-@router.callback_query(F.data == "exped_claim_all", state="*")
+@router.callback_query(F.data == "exped_claim_all", StateFilter("*"))
 async def exped_claim_all(callback: CallbackQuery):
     """Забрать награды всех экспедиций"""
     try:
@@ -420,7 +420,7 @@ async def exped_claim_all(callback: CallbackQuery):
         await callback.answer("❌ Произошла ошибка", show_alert=True)
 
 
-@router.callback_query(F.data == "exped_back_to_cards", state="*")
+@router.callback_query(F.data == "exped_back_to_cards", StateFilter("*"))
 async def exped_back_to_cards(callback: CallbackQuery, state: FSMContext):
     """Вернуться к выбору карт"""
     try:
@@ -451,7 +451,7 @@ async def exped_back_to_cards(callback: CallbackQuery, state: FSMContext):
         await callback.answer("❌ Произошла ошибка", show_alert=True)
 
 
-@router.callback_query(F.data == "exped_cancel", state="*")
+@router.callback_query(F.data == "exped_cancel", StateFilter("*"))
 async def exped_cancel(callback: CallbackQuery, state: FSMContext):
     """Отмена создания экспедиции"""
     await state.clear()

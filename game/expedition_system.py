@@ -205,7 +205,7 @@ class ExpeditionManager:
 
     @staticmethod
     async def claim_expedition(session: AsyncSession, expedition_id: int) -> dict:
-        """Забрать награду одной экспедиции""":
+        """Забрать награду одной экспедиции"""
         expedition = await session.get(Expedition, expedition_id)
 
         if expedition.collected:

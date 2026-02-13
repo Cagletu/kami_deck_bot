@@ -5,6 +5,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQu
 from datetime import datetime
 from database.base import AsyncSessionLocal
 from aiogram.fsm.context import FSMContext
+from aiogram.filters import StateFilter
 import logging
 
 from database.models.user import User
@@ -27,7 +28,6 @@ from bot.keyboards import (
     main_menu_keyboard,
     collection_menu_keyboard,
     rarity_keyboard,
-    expedition_type_keyboard,
     collection_keyboard,
 )
 
@@ -567,7 +567,7 @@ async def cb_collection_page(callback: CallbackQuery):
         await callback.answer("❌ Произошла ошибка.", show_alert=True)
 
 
-@router.callback_query(F.data == "back_to_main", state = "*")
+@router.callback_query(F.data == "back_to_main", StateFilter("*"))
 async def cb_back_main(callback: CallbackQuery):
     try:
         await callback.message.edit_text(
@@ -593,7 +593,7 @@ async def cb_back_collection(callback: CallbackQuery):
         await callback.answer("❌ Произошла ошибка.")
 
 
-@router.message(Command("cancel"), state="*")
+@router.message(Command("cancel"), StateFilter("*"))
 async def cancel_any(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer("Действие отменено")
