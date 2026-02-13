@@ -27,7 +27,7 @@ async def cmd_expedition(message: Message):
         async with AsyncSessionLocal() as session:
             user = await get_user_or_create(session, message.from_user.id)
 
-        active, uncollected = await ExpeditionManager.get_active_expeditions(user.id)
+        active, uncollected = await ExpeditionManager.get_active_expeditions(session, user.id)
         free_slots = user.expeditions_slots - len(active)
 
         text = f"""
@@ -81,7 +81,7 @@ async def exped_main_menu(callback: CallbackQuery):
         async with AsyncSessionLocal() as session:
             user = await get_user_or_create(session, callback.from_user.id)
 
-        active, uncollected = await ExpeditionManager.get_active_expeditions(user.id)
+        active, uncollected = await ExpeditionManager.get_active_expeditions(session, user.id)
         free_slots = user.expeditions_slots - len(active)
 
         text = f"""
@@ -141,39 +141,40 @@ async def exped_new_start(callback: CallbackQuery, state: FSMContext):
         await state.set_state(ExpeditionStates.choosing_cards)
 
         # Показываем доступные карты
-        cards = await ExpeditionManager.get_available_cards(callback.from_user.id)
-
-        if not cards:
+        async with AsyncSessionLocal() as session:
+            cards = await ExpeditionManager.get_available_cards(session, callback.from_user.id)
+    
+            if not cards:
+                await callback.message.edit_text(
+                    "❌ <b>Нет карт для экспедиции!</b>\n\n"
+                    "Карты должны быть:\n"
+                    "• Не в колоде\n"
+                    "• Не в другой экспедиции\n\n"
+                    "Откройте пачку: /open_pack",
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                        [InlineKeyboardButton(text="« Назад", callback_data="expedition")]
+                    ])
+                )
+                await callback.answer()
+                return
+    
+            # Получаем количество карт для отображения
+            card_count = len(cards)
+    
+            text = f"""
+    <b>🏕️ ВЫБЕРИТЕ КАРТЫ</b>
+    
+    📊 Доступно карт: {card_count}
+    Можно выбрать от 1 до 3 карт.
+    ✅ - карта выбрана
+    
+    💡 <b>Бонус +50%</b> если все карты из одного аниме!
+    """
             await callback.message.edit_text(
-                "❌ <b>Нет карт для экспедиции!</b>\n\n"
-                "Карты должны быть:\n"
-                "• Не в колоде\n"
-                "• Не в другой экспедиции\n\n"
-                "Откройте пачку: /open_pack",
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="« Назад", callback_data="expedition")]
-                ])
+                text,
+                reply_markup=expedition_cards_keyboard(cards, [])
             )
             await callback.answer()
-            return
-
-        # Получаем количество карт для отображения
-        card_count = len(cards)
-
-        text = f"""
-<b>🏕️ ВЫБЕРИТЕ КАРТЫ</b>
-
-📊 Доступно карт: {card_count}
-Можно выбрать от 1 до 3 карт.
-✅ - карта выбрана
-
-💡 <b>Бонус +50%</b> если все карты из одного аниме!
-"""
-        await callback.message.edit_text(
-            text,
-            reply_markup=expedition_cards_keyboard(cards, [])
-        )
-        await callback.answer()
 
     except Exception as e:
         logger.exception(f"Ошибка exped_new_start: {e}")
@@ -233,7 +234,7 @@ async def exped_confirm_cards(callback: CallbackQuery, state: FSMContext):
         # Рассчитываем награды для показа
         duration_map = {"short": 30, "medium": 120, "long": 360}
         async with AsyncSessionLocal() as session:
-            rewards = await ExpeditionManager.calculate_rewards(selected, duration_map[duration])
+            rewards = await ExpeditionManager.calculate_rewards(session, selected, duration_map[duration])
     
             duration_names = {"short": "30 минут", "medium": "2 часа", "long": "6 часов"}
     
@@ -256,7 +257,7 @@ async def exped_confirm_cards(callback: CallbackQuery, state: FSMContext):
     
             await callback.message.edit_text(
                 text,
-                reply_markup=expedition_confirm_keyboard(session, duration, len(selected))
+                reply_markup=expedition_confirm_keyboard(duration, len(selected))
             )
             await callback.answer()
     

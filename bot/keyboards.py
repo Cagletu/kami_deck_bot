@@ -1,4 +1,5 @@
 # bot/keyboards.py
+from datetime import datetime
 from aiogram import Bot
 from aiogram.types import BotCommand, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -184,11 +185,11 @@ def expedition_confirm_keyboard(duration: str, card_count: int) -> InlineKeyboar
     """Клавиатура подтверждения экспедиции"""
     builder = InlineKeyboardBuilder()
 
-    duration_names = {
-        "short": "🕐 30 мин",
-        "medium": "🕑 2 часа",
-        "long": "🕕 6 часов"
-    }
+    # duration_names = {
+    #     "short": "🕐 30 мин",
+    #     "medium": "🕑 2 часа",
+    #     "long": "🕕 6 часов"
+    # }
 
     builder.row(
         InlineKeyboardButton(
