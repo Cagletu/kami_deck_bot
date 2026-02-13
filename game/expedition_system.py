@@ -49,7 +49,6 @@ class ExpeditionManager:
             )
             .values(status=ExpeditionStatus.COMPLETED)
         )
-        await session.commit()
 
         # Получаем активные
         result = await session.execute(
@@ -200,7 +199,6 @@ class ExpeditionManager:
         )
 
         user.total_expeditions += 1
-        await session.commit()
         await session.refresh(expedition)
 
         return expedition
@@ -266,9 +264,8 @@ class ExpeditionManager:
         expedition.collected = True
         expedition.completed_at = datetime.now()
 
-        await session.commit()
-
         return rewards
+        
 
     @staticmethod
     async def claim_all_expeditions(user_id: int) -> dict:

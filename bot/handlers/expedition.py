@@ -28,6 +28,8 @@ async def cmd_expedition(message: Message):
             user = await get_user_or_create(session, message.from_user.id)
 
         active, uncollected = await ExpeditionManager.get_active_expeditions(session, user.id)
+        await session.commit()
+        
         free_slots = user.expeditions_slots - len(active)
 
         text = f"""
@@ -82,6 +84,8 @@ async def exped_main_menu(callback: CallbackQuery):
             user = await get_user_or_create(session, callback.from_user.id)
 
         active, uncollected = await ExpeditionManager.get_active_expeditions(session, user.id)
+        await session.commit()
+        
         free_slots = user.expeditions_slots - len(active)
 
         text = f"""
@@ -235,6 +239,7 @@ async def exped_confirm_cards(callback: CallbackQuery, state: FSMContext):
         duration_map = {"short": 30, "medium": 120, "long": 360}
         async with AsyncSessionLocal() as session:
             rewards = await ExpeditionManager.calculate_rewards(session, selected, duration_map[duration])
+            await session.commit()
     
             duration_names = {"short": "30 минут", "medium": "2 часа", "long": "6 часов"}
     
@@ -389,6 +394,7 @@ async def exped_claim_all(callback: CallbackQuery):
     """Забрать награды всех экспедиций"""
     try:
         rewards = await ExpeditionManager.claim_all_expeditions(callback.from_user.id)
+        await session.commit()
 
         if rewards["count"] == 0:
             await callback.answer("Нет готовых экспедиций!", show_alert=True)
