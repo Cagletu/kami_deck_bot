@@ -27,49 +27,49 @@ async def cmd_expedition(message: Message):
         async with AsyncSessionLocal() as session:
             user = await get_user_or_create(session, message.from_user.id)
 
-        active, uncollected = await ExpeditionManager.get_active_expeditions(session, user.id)
-        await session.commit()
-        
-        free_slots = user.expeditions_slots - len(active)
-
-        text = f"""
-<b>🏕️ ЭКСПЕДИЦИИ</b>
-
-📊 <b>Ваши слоты:</b> {user.expeditions_slots}
-🔵 Активных: {len(active)}
-🟢 Готово к забору: {len(uncollected)}
-⚪ Свободно: {free_slots}
-
-<b>⚡ Доступные экспедиции:</b>
-
-🕐 <b>30 минут</b>
-• {6 * 1}-{9 * 1} монет за карту
-• {1 * 1} пыли за карту
-• 50% шанс на E карту
-
-🕑 <b>2 часа</b>
-• {24 * 1}-{36 * 1} монет за карту
-• {4 * 1} пыли за карту
-• 100% шанс на D карту
-
-🕕 <b>6 часов</b>
-• {72 * 1}-{108 * 1} монет за карту
-• {12 * 1} пыли за карту
-• 100% шанс на C карту
-
-💡 <b>Бонусы:</b>
-• +50% награды за карты из одного аниме
-• x1-x3 за количество карт
-"""
-        await message.answer(
-            text,
-            reply_markup=expedition_main_keyboard(
-                len(active), 
-                len(uncollected), 
-                user.expeditions_slots,
-                free_slots
+            active, uncollected = await ExpeditionManager.get_active_expeditions(session, user.id)
+            await session.commit()
+            
+            free_slots = user.expeditions_slots - len(active)
+    
+            text = f"""
+    <b>🏕️ ЭКСПЕДИЦИИ</b>
+    
+    📊 <b>Ваши слоты:</b> {user.expeditions_slots}
+    🔵 Активных: {len(active)}
+    🟢 Готово к забору: {len(uncollected)}
+    ⚪ Свободно: {free_slots}
+    
+    <b>⚡ Доступные экспедиции:</b>
+    
+    🕐 <b>30 минут</b>
+    • {6 * 1}-{9 * 1} монет за карту
+    • {1 * 1} пыли за карту
+    • 50% шанс на E карту
+    
+    🕑 <b>2 часа</b>
+    • {24 * 1}-{36 * 1} монет за карту
+    • {4 * 1} пыли за карту
+    • 100% шанс на D карту
+    
+    🕕 <b>6 часов</b>
+    • {72 * 1}-{108 * 1} монет за карту
+    • {12 * 1} пыли за карту
+    • 100% шанс на C карту
+    
+    💡 <b>Бонусы:</b>
+    • +50% награды за карты из одного аниме
+    • x1-x3 за количество карт
+    """
+            await message.answer(
+                text,
+                reply_markup=expedition_main_keyboard(
+                    len(active), 
+                    len(uncollected), 
+                    user.expeditions_slots,
+                    free_slots
+                )
             )
-        )
 
     except Exception as e:
         logger.exception(f"Ошибка cmd_expedition: {e}")
@@ -83,50 +83,50 @@ async def exped_main_menu(callback: CallbackQuery):
         async with AsyncSessionLocal() as session:
             user = await get_user_or_create(session, callback.from_user.id)
 
-        active, uncollected = await ExpeditionManager.get_active_expeditions(session, user.id)
-        await session.commit()
-        
-        free_slots = user.expeditions_slots - len(active)
-
-        text = f"""
-<b>🏕️ ЭКСПЕДИЦИИ</b>
-
-📊 <b>Ваши слоты:</b> {user.expeditions_slots}
-🔵 Активных: {len(active)}
-🟢 Готово к забору: {len(uncollected)}
-⚪ Свободно: {free_slots}
-
-<b>⚡ Доступные экспедиции:</b>
-
-🕐 <b>30 минут</b>
-• 6-9 монет за карту
-• 1 пыль за карту
-• 50% шанс на E карту
-
-🕑 <b>2 часа</b>
-• 24-36 монет за карту
-• 4 пыли за карту
-• 100% шанс на D карту
-
-🕕 <b>6 часов</b>
-• 72-108 монет за карту
-• 12 пыли за карту
-• 100% шанс на C карту
-
-💡 <b>Бонусы:</b>
-• +50% награды за карты из одного аниме
-• x1-x3 за количество карт
-"""
-        await callback.message.edit_text(
-            text,
-            reply_markup=expedition_main_keyboard(
-                len(active), 
-                len(uncollected), 
-                user.expeditions_slots,
-                free_slots
+            active, uncollected = await ExpeditionManager.get_active_expeditions(session, user.id)
+            await session.commit()
+            
+            free_slots = user.expeditions_slots - len(active)
+    
+            text = f"""
+    <b>🏕️ ЭКСПЕДИЦИИ</b>
+    
+    📊 <b>Ваши слоты:</b> {user.expeditions_slots}
+    🔵 Активных: {len(active)}
+    🟢 Готово к забору: {len(uncollected)}
+    ⚪ Свободно: {free_slots}
+    
+    <b>⚡ Доступные экспедиции:</b>
+    
+    🕐 <b>30 минут</b>
+    • 6-9 монет за карту
+    • 1 пыль за карту
+    • 50% шанс на E карту
+    
+    🕑 <b>2 часа</b>
+    • 24-36 монет за карту
+    • 4 пыли за карту
+    • 100% шанс на D карту
+    
+    🕕 <b>6 часов</b>
+    • 72-108 монет за карту
+    • 12 пыли за карту
+    • 100% шанс на C карту
+    
+    💡 <b>Бонусы:</b>
+    • +50% награды за карты из одного аниме
+    • x1-x3 за количество карт
+    """
+            await callback.message.edit_text(
+                text,
+                reply_markup=expedition_main_keyboard(
+                    len(active), 
+                    len(uncollected), 
+                    user.expeditions_slots,
+                    free_slots
+                )
             )
-        )
-        await callback.answer()
+            await callback.answer()
 
     except Exception as e:
         logger.exception(f"Ошибка exped_main_menu: {e}")
@@ -146,7 +146,8 @@ async def exped_new_start(callback: CallbackQuery, state: FSMContext):
 
         # Показываем доступные карты
         async with AsyncSessionLocal() as session:
-            cards = await ExpeditionManager.get_available_cards(session, callback.from_user.id)
+            user = await get_user_or_create(session, callback.from_user.id)
+            cards = await ExpeditionManager.get_available_cards(session, user.id)
 
             # 🔍 ДОБАВЛЯЕМ ОТЛАДКУ
             logger.info(f"Найдено доступных карт: {len(cards)}")
@@ -217,7 +218,8 @@ async def exped_select_card(callback: CallbackQuery, state: FSMContext):
         await state.update_data(selected_cards=list(selected))
 
         async with AsyncSessionLocal() as session:
-            cards = await ExpeditionManager.get_available_cards(session, callback.from_user.id)
+            user = await get_user_or_create(session, callback.from_user.id)  # ПОЛУЧАЕМ user
+            cards = await ExpeditionManager.get_available_cards(session, user.id)
 
         await callback.message.edit_reply_markup(
             reply_markup=expedition_cards_keyboard(cards, list(selected))
@@ -295,7 +297,7 @@ async def exped_start_final(callback: CallbackQuery, state: FSMContext):
         async with AsyncSessionLocal() as session:
             expedition = await ExpeditionManager.start_expedition(
                 session,
-                callback.from_user.id,
+                callback.user.id,
                 selected,
                 duration
             )
@@ -347,7 +349,8 @@ async def exped_list(callback: CallbackQuery):
     """Список активных экспедиций"""
     try:
         async with AsyncSessionLocal() as session:
-            active, uncollected = await ExpeditionManager.get_active_expeditions(session, callback.from_user.id)
+            user = await get_user_or_create(session, callback.from_user.id)  # ПОЛУЧАЕМ user
+            active, uncollected = await ExpeditionManager.get_active_expeditions(session, user.id)
         
             if not active and not uncollected:
                 await callback.message.edit_text(
@@ -401,7 +404,8 @@ async def exped_claim_all(callback: CallbackQuery):
     """Забрать награды всех экспедиций"""
     try:
         async with AsyncSessionLocal() as session:
-            rewards = await ExpeditionManager.claim_all_expeditions(session, callback.from_user.id)
+            user = await get_user_or_create(session, callback.from_user.id)  # ПОЛУЧАЕМ user
+            rewards = await ExpeditionManager.claim_all_expeditions(session, user.id)
             await session.commit()
     
             if rewards["count"] == 0:
@@ -445,7 +449,8 @@ async def exped_back_to_cards(callback: CallbackQuery, state: FSMContext):
         await state.set_state(ExpeditionStates.choosing_cards)
         
         async with AsyncSessionLocal() as session:
-            cards = await ExpeditionManager.get_available_cards(session, callback.from_user.id)
+            user = await get_user_or_create(session, callback.from_user.id)  # ПОЛУЧАЕМ user
+            cards = await ExpeditionManager.get_available_cards(session, user.id)
     
             text = """
     <b>🏕️ ВЫБЕРИТЕ КАРТЫ</b>
