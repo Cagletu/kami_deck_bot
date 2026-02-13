@@ -288,7 +288,10 @@ async def exped_start_final(callback: CallbackQuery, state: FSMContext):
         data = await state.get_data()
         selected = data.get("selected_cards", [])
 
+        logger.info(f"🚀 exped_start_final: duration={duration}, selected={selected}")
+
         if not selected:
+            logger.error("❌ Карты не выбраны")
             await callback.answer("❌ Ошибка: карты не выбраны", show_alert=True)
             await state.clear()
             return
@@ -296,12 +299,19 @@ async def exped_start_final(callback: CallbackQuery, state: FSMContext):
         # Запускаем экспедицию
         async with AsyncSessionLocal() as session:
             user = await get_user_or_create(session, callback.from_user.id)
+            logger.info(f"👤 Пользователь: id={user.id}, telegram_id={callback.from_user.id}")
+            
             expedition = await ExpeditionManager.start_expedition(
                 session,
                 user.id,
                 selected,
                 duration
             )
+
+            logger.info(f"✅ Экспедиция создана: id={expedition.id}")
+
+            await session.commit()
+            logger.info("✅ Коммит успешен")
         
             # Получаем время окончания
             end_time = expedition.ends_at.strftime("%H:%M %d.%m.%Y")

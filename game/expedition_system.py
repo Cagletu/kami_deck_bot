@@ -23,16 +23,6 @@ class ExpeditionManager:
         user_id: int
     ) -> List[Tuple[UserCard, Card]]:
         """Получить карты доступные для экспедиции"""
-
-        # 🔍 ДОБАВЛЯЕМ ПРОВЕРКУ - сначала посмотрим все карты пользователя
-        all_cards = await session.execute(
-            select(UserCard, Card)
-            .join(Card, UserCard.card_id == Card.id)
-            .where(UserCard.user_id == user_id)
-        )
-        all_cards_list = all_cards.all()
-        logger.info(f"Всего карт у пользователя: {len(all_cards_list)}")
-
         result = await session.execute(
             select(UserCard, Card)
             .join(Card, UserCard.card_id == Card.id)
@@ -53,9 +43,11 @@ class ExpeditionManager:
     @staticmethod
     async def get_active_expeditions(session: AsyncSession, user_id: int) -> Tuple[List[Expedition], List[Expedition]]:
         """Получить активные и завершенные экспедиции"""
+        logger.info(f"🔍 get_active_expeditions для user_id={user_id}")
+
         # Проверяем завершенные
         now = datetime.now()
-        await session.execute(
+        result = await session.execute(
             Expedition.__table__.update()
             .where(
                 and_(
@@ -65,8 +57,11 @@ class ExpeditionManager:
                 )
             )
             .values(status=ExpeditionStatus.COMPLETED)
+            .returning(Expedition.id)
         )
-        await session.flush()
+        updated = result.rowcount
+        if updated > 0:
+            logger.info(f"✅ Завершено экспедиций: {updated}")
 
         # Получаем активные
         result = await session.execute(
@@ -80,6 +75,7 @@ class ExpeditionManager:
             .order_by(Expedition.ends_at)
         )
         active = result.scalars().all()
+        logger.info(f"📊 Активных экспедиций: {len(active)}")
 
         # Получаем незабранные
         result = await session.execute(
@@ -93,6 +89,7 @@ class ExpeditionManager:
             )
         )
         uncollected = result.scalars().all()
+        logger.info(f"📊 Незабранных экспедиций: {len(uncollected)}")
 
         return active, uncollected
 
@@ -151,14 +148,15 @@ class ExpeditionManager:
         duration_type: str
     ) -> Expedition:
         """Начать экспедицию"""
+        logger.info(f"🚀 start_expedition: user_id={user_id}, card_ids={card_ids}, duration={duration_type}")
         # Проверка количества карт
         if len(card_ids) < 1 or len(card_ids) > 3:
             raise ValueError("Можно отправить от 1 до 3 карт")
 
         # Длительность (исправить при проде)
         duration_map = {
-            "short": 0.3, # 30,
-            "medium": 0.5, # 120,
+            "short": 1, # 30,
+            "medium": 1, # 120,
             "long": 1 # 360
         }
         duration = duration_map[duration_type]
@@ -170,10 +168,12 @@ class ExpeditionManager:
         # Проверяем слоты
         user = await session.get(User, user_id)
         if not user:
+            logger.error(f"❌ Пользователь {user_id} не найден")
             raise ValueError("Пользователь не найден")
         active, _ = await ExpeditionManager.get_active_expeditions(session, user_id)
 
         if len(active) >= user.expeditions_slots:
+            logger.error(f"❌ Нет свободных слотов: {len(active)} >= {user.expeditions_slots}")
             raise ValueError("Нет свободных слотов для экспедиции")
 
         cards_check = await session.execute(
@@ -184,11 +184,24 @@ class ExpeditionManager:
         )
 
         valid_cards = cards_check.scalars().all()
+        logger.info(f"✅ Доступных карт из запрошенных: {len(valid_cards)} из {len(card_ids)}")
 
         if len(valid_cards) != len(card_ids):
-            raise ValueError("Одна из карт уже используется")
+            # Найдем какие карты недоступны
+            for card_id in card_ids:
+                card_check = await session.execute(
+                    select(UserCard)
+                    .where(UserCard.id == card_id)
+                )
+                card = card_check.scalar_one_or_none()
+                if card:
+                    logger.error(f"❌ Карта {card_id}: is_in_expedition={card.is_in_expedition}, is_in_deck={card.is_in_deck}")
+                else:
+                    logger.error(f"❌ Карта {card_id} не найдена")
+            raise ValueError("Некоторые карты уже используются в экспедиции или колоде")
 
 
+        # Создаем экспедицию
         expedition = Expedition(
             user_id=user_id,
             name=f"Экспедиция {duration}мин ({len(card_ids)} карт)",
@@ -207,9 +220,18 @@ class ExpeditionManager:
         )
 
         session.add(expedition)
+        logger.info(f"➕ Экспедиция создана, ожидает flush")
+
+        # Пробуем flush чтобы увидеть ошибки до commit
+        try:
+            await session.flush()
+            logger.info(f"✅ Flush успешен, expedition.id = {expedition.id}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка при flush: {e}")
+            raise
 
         # Помечаем карты
-        await session.execute(
+        result = await session.execute(
             UserCard.__table__.update()
             .where(UserCard.id.in_(card_ids))
             .values(
@@ -217,9 +239,12 @@ class ExpeditionManager:
                 expedition_end_time=expedition.ends_at
             )
         )
+        logger.info(f"🔄 Обновлено карт: {result.rowcount}")
 
         user.total_expeditions += 1
 
+        logger.info(f"✅ Экспедиция {expedition.id} успешно создана и готова к коммиту")
+        
         return expedition
         
 
