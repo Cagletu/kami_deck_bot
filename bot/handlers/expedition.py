@@ -147,6 +147,13 @@ async def exped_new_start(callback: CallbackQuery, state: FSMContext):
         # Показываем доступные карты
         async with AsyncSessionLocal() as session:
             cards = await ExpeditionManager.get_available_cards(session, callback.from_user.id)
+
+            # 🔍 ДОБАВЛЯЕМ ОТЛАДКУ
+            logger.info(f"Найдено доступных карт: {len(cards)}")
+            if cards:
+                for user_card, card in cards[:3]:
+                    logger.info(f"  - Карта: {card.card_name} [{card.rarity}], Ур.{user_card.level}, ID: {user_card.id}")
+                    logger.info(f"    is_in_deck: {user_card.is_in_deck}, is_in_expedition: {user_card.is_in_expedition}")
     
             if not cards:
                 await callback.message.edit_text(

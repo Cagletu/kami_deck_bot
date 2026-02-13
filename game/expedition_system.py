@@ -9,6 +9,10 @@ from database.models.card import Card
 from database.models.user_card import UserCard
 from database.models.expedition import Expedition, ExpeditionType, ExpeditionStatus
 from database.base import AsyncSessionLocal
+import logging
+
+
+logger = logging.getLogger(__name__)
 
 
 class ExpeditionManager:
@@ -18,20 +22,33 @@ class ExpeditionManager:
         session: AsyncSession,
         user_id: int
     ) -> List[Tuple[UserCard, Card]]:
+        """Получить карты доступные для экспедиции"""
+
+        # 🔍 ДОБАВЛЯЕМ ПРОВЕРКУ - сначала посмотрим все карты пользователя
+        all_cards = await session.execute(
+            select(UserCard, Card)
+            .join(Card, UserCard.card_id == Card.id)
+            .where(UserCard.user_id == user_id)
+        )
+        all_cards_list = all_cards.all()
+        logger.info(f"Всего карт у пользователя: {len(all_cards_list)}")
 
         result = await session.execute(
             select(UserCard, Card)
             .join(Card, UserCard.card_id == Card.id)
             .where(
                 UserCard.user_id == user_id,
-                UserCard.is_in_expedition.is_(False),
-                UserCard.is_in_deck.is_(False)
+                UserCard.is_in_expedition == False,  # Не в экспедиции
+                UserCard.is_in_deck == False         # Не в колоде
             )
             .order_by(Card.rarity.desc(), UserCard.level.desc())
             .limit(50)
         )
 
-        return result.all()
+        cards = result.all()
+        logger.info(f"Доступных карт после фильтрации: {len(cards)}")
+
+        return cards
 
     @staticmethod
     async def get_active_expeditions(session: AsyncSession, user_id: int) -> Tuple[List[Expedition], List[Expedition]]:
@@ -49,6 +66,7 @@ class ExpeditionManager:
             )
             .values(status=ExpeditionStatus.COMPLETED)
         )
+        await session.flush()
 
         # Получаем активные
         result = await session.execute(
@@ -70,7 +88,7 @@ class ExpeditionManager:
                 and_(
                     Expedition.user_id == user_id,
                     Expedition.status == ExpeditionStatus.COMPLETED,
-                    not Expedition.collected
+                    Expedition.collected == False
                 )
             )
         )
