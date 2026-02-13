@@ -295,9 +295,10 @@ async def exped_start_final(callback: CallbackQuery, state: FSMContext):
 
         # Запускаем экспедицию
         async with AsyncSessionLocal() as session:
+            user = await get_user_or_create(session, callback.from_user.id)
             expedition = await ExpeditionManager.start_expedition(
                 session,
-                callback.user.id,
+                user.id,
                 selected,
                 duration
             )
