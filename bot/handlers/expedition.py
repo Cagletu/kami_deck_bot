@@ -393,34 +393,35 @@ async def exped_list(callback: CallbackQuery):
 async def exped_claim_all(callback: CallbackQuery):
     """Забрать награды всех экспедиций"""
     try:
-        rewards = await ExpeditionManager.claim_all_expeditions(callback.from_user.id)
-        await session.commit()
-
-        if rewards["count"] == 0:
-            await callback.answer("Нет готовых экспедиций!", show_alert=True)
-            return
-
-        text = f"""
-<b>🎁 ПОЛУЧЕНЫ НАГРАДЫ!</b>
-
-📊 <b>Экспедиций завершено:</b> {rewards["count"]}
-
-💰 <b>Монеты:</b> +{rewards["coins"]}
-✨ <b>Пыль:</b> +{rewards["dust"]}
-"""
-        if rewards["cards"]:
-            text += "\n<b>📦 Полученные карты:</b>\n"
-            for card in rewards["cards"]:
-                emoji = {'E':'⚪','D':'🟢','C':'⚡','B':'💫','A':'🔮','S':'⭐','ASS':'✨','SSS':'🏆'}.get(card.rarity,'🃏')
-                text += f"• {emoji} {card.card_name} [{card.rarity}]\n"
-
-        await callback.message.edit_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🏠 В меню экспедиций", callback_data="expedition")]
-            ])
-        )
-        await callback.answer()
+        async with AsyncSessionLocal() as session:
+            rewards = await ExpeditionManager.claim_all_expeditions(session, callback.from_user.id)
+            await session.commit()
+    
+            if rewards["count"] == 0:
+                await callback.answer("Нет готовых экспедиций!", show_alert=True)
+                return
+    
+            text = f"""
+    <b>🎁 ПОЛУЧЕНЫ НАГРАДЫ!</b>
+    
+    📊 <b>Экспедиций завершено:</b> {rewards["count"]}
+    
+    💰 <b>Монеты:</b> +{rewards["coins"]}
+    ✨ <b>Пыль:</b> +{rewards["dust"]}
+    """
+            if rewards["cards"]:
+                text += "\n<b>📦 Полученные карты:</b>\n"
+                for card in rewards["cards"]:
+                    emoji = {'E':'⚪','D':'🟢','C':'⚡','B':'💫','A':'🔮','S':'⭐','ASS':'✨','SSS':'🏆'}.get(card.rarity,'🃏')
+                    text += f"• {emoji} {card.card_name} [{card.rarity}]\n"
+    
+            await callback.message.edit_text(
+                text,
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🏠 В меню экспедиций", callback_data="expedition")]
+                ])
+            )
+            await callback.answer()
 
     except Exception as e:
         logger.exception(f"Ошибка exped_claim_all: {e}")

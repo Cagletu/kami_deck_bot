@@ -139,19 +139,21 @@ class ExpeditionManager:
 
         # Длительность (исправить при проде)
         duration_map = {
-            "short": 1, # 30,
-            "medium": 2, # 120,
-            "long": 3 # 360
+            "short": 0.3, # 30,
+            "medium": 0.5, # 120,
+            "long": 1 # 360
         }
         duration = duration_map[duration_type]
 
         # Расчет наград
-        rewards = await ExpeditionManager.calculate_rewards(card_ids, duration)
+        rewards = await ExpeditionManager.calculate_rewards(session, card_ids, duration)
 
         # Создание экспедиции
         # Проверяем слоты
         user = await session.get(User, user_id)
-        active, _ = await ExpeditionManager.get_active_expeditions(user_id)
+        if not user:
+            raise ValueError("Пользователь не найден")
+        active, _ = await ExpeditionManager.get_active_expeditions(session, user_id)
 
         if len(active) >= user.expeditions_slots:
             raise ValueError("Нет свободных слотов для экспедиции")
@@ -199,9 +201,9 @@ class ExpeditionManager:
         )
 
         user.total_expeditions += 1
-        await session.refresh(expedition)
 
         return expedition
+        
 
     @staticmethod
     async def claim_expedition(session: AsyncSession, expedition_id: int) -> dict:
@@ -268,16 +270,16 @@ class ExpeditionManager:
         
 
     @staticmethod
-    async def claim_all_expeditions(user_id: int) -> dict:
+    async def claim_all_expeditions(session: AsyncSession, user_id: int) -> dict:
         """Забрать награды всех завершенных экспедиций"""
-        _, uncollected = await ExpeditionManager.get_active_expeditions(user_id)
+        _, uncollected = await ExpeditionManager.get_active_expeditions(session, user_id)
 
         total_coins = 0
         total_dust = 0
         cards_won = []
 
         for expedition in uncollected:
-            rewards = await ExpeditionManager.claim_expedition(expedition.id)
+            rewards = await ExpeditionManager.claim_expedition(session, expedition.id)
             total_coins += rewards["coins"]
             total_dust += rewards["dust"]
             if rewards["card"]:
