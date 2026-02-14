@@ -61,7 +61,7 @@ def calculate_stats_for_level(card: Card, level: int) -> dict:
 def get_upgrade_cost(card: Card, current_level: int) -> int:
     """Получить стоимость улучшения карты"""
     rarity_cost = DUST_PER_RARITY.get(card.rarity, 15)
-    cost = rarity_cost * UPGRADE_COST_PER_LEVEL
+    cost = rarity_cost * (current_level + 1) * UPGRADE_COST_PER_LEVEL
 
     # Первые 10 уровней дешевле (приятный UX)
     if current_level < 10:

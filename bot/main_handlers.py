@@ -13,6 +13,7 @@ from database.models.user_card import UserCard
 from database.models.card import Card
 from database.crud_cards import get_user_card_detail, toggle_favorite, toggle_in_deck, upgrade_user_card
 from game.upgrade_calculator import get_upgrade_cost
+from game.duplicate_system import check_and_process_duplicates
 from sqlalchemy import func, and_
 
 from sqlalchemy import select
@@ -161,41 +162,58 @@ async def cmd_collection(message: types.Message):
 
 
 # ===== OPEN PACK =====
+
+
 @router.message(Command("open_pack"))
 async def cmd_open_pack(message: types.Message):
     try:
         async with AsyncSessionLocal() as session:
-            user = await get_user_or_create(session, message.from_user.id,
-                                            message.from_user.username,
-                                            message.from_user.first_name,
-                                            message.from_user.last_name)
+            user = await get_user_or_create(
+                session,
+                message.from_user.id,
+                message.from_user.username,
+                message.from_user.first_name,
+                message.from_user.last_name
+            )
 
             if user.coins < 100:
                 await message.answer(
                     "❌ Недостаточно монет!\n"
                     "💰 Получите ежедневную награду: /daily\n"
-                    "🏕️ Или отправьте персонажей в экспедицию: /expedition")
+                    "🏕️ Или отправьте персонажей в экспедицию: /expedition"
+                )
                 return
 
             cards, pack_open = await open_pack(user.id, "common", session)
-            await session.commit()
 
-            # Обновляем данные пользователя после коммита
+            # Проверяем дубликаты
+            duplicate_info = []
+            for card in cards:
+                result = await check_and_process_duplicates(session, user.id, card.id)
+                if result["is_duplicate"]:
+                    duplicate_info.append(result)
+
+            await session.commit()
             await session.refresh(user)
 
-        text = f"<b>📦 ВЫ ОТКРЫЛИ ПАЧКУ КАРТ!</b>\n\n💰 Потрачено: <code>100</code> монет\n💰 Осталось: <code>{user.coins}</code> монет\n\n<b>🎉 Вы получили:</b>\n"
+        # Формируем сообщение
+        text = f"<b>📦 ВЫ ОТКРЫЛИ ПАЧКУ КАРТ!</b>\n\n💰 Потрачено: <code>100</code> монет\n💰 Осталось: <code>{user.coins}</code> монет\n\n"
+
+        if duplicate_info:
+            text += "<b>🔄 ДУБЛИКАТЫ ОБМЕНЯНЫ НА ПЫЛЬ:</b>\n"
+            for dup in duplicate_info:
+                emoji = {'E':'⚪','D':'🟢','C':'⚡','B':'💫','A':'🔮','S':'⭐','ASS':'✨','SSS':'🏆'}.get(dup['card'].rarity,'🃏')
+                text += f"{emoji} {dup['card'].card_name} - {dup['dust_earned']}✨ (дубликат #{dup['duplicate_count']})\n"
+            text += "\n"
+
+        text += "<b>🎉 НОВЫЕ КАРТЫ:</b>\n"
         for card in cards:
-            emoji = {
-                'E': '⚪',
-                'D': '🟢',
-                'C': '⚡',
-                'B': '💫',
-                'A': '🔮',
-                'S': '⭐',
-                'ASS': '✨',
-                'SSS': '🏆'
-            }.get(card.rarity, '🃏')
-            text += f"{emoji} <b>{card.card_name}</b> [{card.rarity}]\n"
+            # Проверяем, была ли эта карта дубликатом
+            is_duplicate = any(dup['card'].id == card.id for dup in duplicate_info)
+            if not is_duplicate:
+                emoji = {'E':'⚪','D':'🟢','C':'⚡','B':'💫','A':'🔮','S':'⭐','ASS':'✨','SSS':'🏆'}.get(card.rarity,'🃏')
+                text += f"{emoji} <b>{card.card_name}</b> [{card.rarity}] (НОВАЯ!)\n"
+
         if pack_open.guaranteed_rarity:
             text += f"\n🎁 <b>ГАРАНТИЯ!</b> Вам выпала {pack_open.guaranteed_rarity} карта!"
 
@@ -204,8 +222,9 @@ async def cmd_open_pack(message: types.Message):
         if len(cards) > 1:
             media_group = [
                 types.InputMediaPhoto(
-                    media=card.original_url,
-                    caption=f"{card.card_name} [{card.rarity}]")
+                    media=card.original_url, 
+                    caption=f"{'🔄 ДУБЛИКАТ' if any(dup['card'].id == card.id for dup in duplicate_info) else '✨ НОВАЯ'} {card.card_name} [{card.rarity}]"
+                ) 
                 for card in cards[1:]
             ]
             await message.answer_media_group(media_group)
@@ -215,7 +234,6 @@ async def cmd_open_pack(message: types.Message):
     except Exception as e:
         logger.exception(f"Ошибка открытия пачки: {e}")
         await message.answer("❌ Произошла ошибка. Попробуйте позже.")
-
 
 # ===== DAILY =====
 @router.message(Command("daily"))
@@ -462,43 +480,73 @@ async def back_to_collection(callback: types.CallbackQuery):
 async def cb_open_pack(callback: types.CallbackQuery):
     try:
         async with AsyncSessionLocal() as session:
-            user = await get_user_or_create(session, callback.from_user.id,
-                                            callback.from_user.username,
-                                            callback.from_user.first_name,
-                                            callback.from_user.last_name)
+            user = await get_user_or_create(
+                session,
+                callback.from_user.id,
+                callback.from_user.username,
+                callback.from_user.first_name,
+                callback.from_user.last_name
+            )
 
             if user.coins < 100:
-                await callback.answer("Недостаточно монет!", show_alert=True)
+                await callback.message.answer(
+                    "❌ Недостаточно монет!\n"
+                    "💰 Получите ежедневную награду: /daily\n"
+                    "🏕️ Или отправьте персонажей в экспедицию: /expedition"
+                )
+                await callback.answer()
                 return
 
             cards, pack_open = await open_pack(user.id, "common", session)
+
+            # Проверяем дубликаты
+            duplicate_info = []
+            for card in cards:
+                result = await check_and_process_duplicates(session, user.id, card.id)
+                if result["is_duplicate"]:
+                    duplicate_info.append(result)
+
             await session.commit()
             await session.refresh(user)
 
-        text = f"<b>📦 ВЫ ОТКРЫЛИ ПАЧКУ КАРТ!</b>\n\n💰 Потрачено: <code>100</code> монет\n💰 Осталось: <code>{user.coins}</code> монет\n\n<b>🎉 Вы получили:</b>\n"
-        for card in cards:
-            emoji = {
-                'E': '⚪',
-                'D': '🟢',
-                'C': '⚡',
-                'B': '💫',
-                'A': '🔮',
-                'S': '⭐',
-                'ASS': '✨',
-                'SSS': '🏆'
-            }.get(card.rarity, '🃏')
-            text += f"{emoji} <b>{card.card_name}</b> [{card.rarity}]\n"
-        if pack_open.guaranteed_rarity:
-            text += f"\n🎁 <b>ГАРАНТ!</b> Вам выпала {pack_open.guaranteed_rarity} карта!"
+        # Формируем сообщение
+        text = (
+            f"<b>📦 ВЫ ОТКРЫЛИ ПАЧКУ КАРТ!</b>\n\n"
+            f"💰 Потрачено: <code>100</code> монет\n"
+            f"💰 Осталось: <code>{user.coins}</code> монет\n\n"
+        )
 
-        await callback.message.answer_photo(photo=cards[0].original_url,
-                                            caption=text)
+        if duplicate_info:
+            text += "<b>🔄 ДУБЛИКАТЫ ОБМЕНЯНЫ НА ПЫЛЬ:</b>\n"
+            for dup in duplicate_info:
+                emoji = {
+                    'E':'⚪','D':'🟢','C':'⚡','B':'💫',
+                    'A':'🔮','S':'⭐','ASS':'✨','SSS':'🏆'
+                }.get(dup['card'].rarity,'🃏')
+                text += f"{emoji} {dup['card'].card_name} - {dup['dust_earned']}✨ (дубликат #{dup['duplicate_count']})\n"
+            text += "\n"
+
+        text += "<b>🎉 НОВЫЕ КАРТЫ:</b>\n"
+        for card in cards:
+            is_duplicate = any(dup['card'].id == card.id for dup in duplicate_info)
+            if not is_duplicate:
+                emoji = {
+                    'E':'⚪','D':'🟢','C':'⚡','B':'💫',
+                    'A':'🔮','S':'⭐','ASS':'✨','SSS':'🏆'
+                }.get(card.rarity,'🃏')
+                text += f"{emoji} <b>{card.card_name}</b> [{card.rarity}] (НОВАЯ!)\n"
+
+        if pack_open.guaranteed_rarity:
+            text += f"\n🎁 <b>ГАРАНТИЯ!</b> Вам выпала {pack_open.guaranteed_rarity} карта!"
+
+        await callback.message.answer_photo(photo=cards[0].original_url, caption=text)
 
         if len(cards) > 1:
             media_group = [
                 types.InputMediaPhoto(
                     media=card.original_url,
-                    caption=f"{card.card_name} [{card.rarity}]")
+                    caption=f"{'🔄 ДУБЛИКАТ' if any(dup['card'].id == card.id for dup in duplicate_info) else '✨ НОВАЯ'} {card.card_name} [{card.rarity}]"
+                )
                 for card in cards[1:]
             ]
             await callback.message.answer_media_group(media_group)
@@ -506,11 +554,13 @@ async def cb_open_pack(callback: types.CallbackQuery):
         await callback.answer()
 
     except ValueError as e:
-        await callback.answer(str(e), show_alert=True)
+        await callback.message.answer(f"❌ {e}")
+        await callback.answer()
     except Exception as e:
         logger.exception(f"Ошибка открытия пачки: {e}")
-        await callback.answer("❌ Произошла ошибка. Попробуйте позже.",
-                              show_alert=True)
+        await callback.message.answer("❌ Произошла ошибка. Попробуйте позже.")
+        await callback.answer()
+
 
 
 @router.callback_query(F.data.startswith("col_page:"))
@@ -635,58 +685,50 @@ async def toggle_deck_handler(callback: types.CallbackQuery):
 async def upgrade_card(callback: types.CallbackQuery):
     """Улучшить карту"""
     try:
-        # Проверяем что это точно upgrade_
-        if not callback.data.startswith("upgrade_"):
-            return
-
         card_id = int(callback.data.replace("upgrade_", ""))
         logger.info(f"Улучшение карты ID: {card_id}")
 
         async with AsyncSessionLocal() as session:
-            # Сначала получаем пользователя
+            # Получаем пользователя
             user = await get_user_or_create(session, callback.from_user.id)
             if not user:
-                await callback.answer("❌ Пользователь не найден",
-                                      show_alert=True)
+                await callback.answer("❌ Пользователь не найден", show_alert=True)
                 return
-
-            logger.info(f"Пользователь найден: ID={user.id}, dust={user.dust}")
 
             # Получаем карту
             result = await session.execute(
-                select(UserCard, Card).join(
-                    Card,
-                    UserCard.card_id == Card.id).where(UserCard.id == card_id))
+                select(UserCard, Card)
+                .join(Card, UserCard.card_id == Card.id)
+                .where(UserCard.id == card_id)
+            )
             data = result.first()
-
             if not data:
                 await callback.answer("Карта не найдена", show_alert=True)
                 return
 
             user_card, card = data
-
             if user_card.user_id != user.id:
-                logger.error(
-                    f"Карта {card_id} принадлежит {user_card.user_id}, а не {user.id}"
-                )
-                await callback.answer("❌ Карта не принадлежит вам",
-                                      show_alert=True)
+                await callback.answer("❌ Карта не принадлежит вам", show_alert=True)
                 return
 
-            # Проверка уровня
             if user_card.level >= 100:
-                await callback.answer("Карта уже максимального уровня!",
-                                      show_alert=True)
+                await callback.answer("Карта уже максимального уровня!", show_alert=True)
                 return
 
-            # Расчет стоимости
-            from game.upgrade_calculator import get_upgrade_cost
-            upgrade_cost = get_upgrade_cost(card, user_card.level)
+            # Сохраняем старые статы
+            old_stats = {
+                'power': user_card.current_power,
+                'health': user_card.current_health,
+                'attack': user_card.current_attack,
+                'defense': user_card.current_defense,
+                'level': user_card.level
+            }
 
+            # Стоимость
+            from game.upgrade_calculator import get_upgrade_cost, calculate_stats_for_level
+            upgrade_cost = get_upgrade_cost(card, user_card.level)
             if user.dust < upgrade_cost:
-                await callback.answer(
-                    f"❌ Не хватает пыли! Нужно: {upgrade_cost}",
-                    show_alert=True)
+                await callback.answer(f"❌ Не хватает пыли! Нужно: {upgrade_cost}", show_alert=True)
                 return
 
             # Улучшаем
@@ -694,10 +736,7 @@ async def upgrade_card(callback: types.CallbackQuery):
             user_card.level += 1
             user_card.times_upgraded += 1
 
-            # Пересчитываем характеристики
-            from game.upgrade_calculator import calculate_stats_for_level
             new_stats = calculate_stats_for_level(card, user_card.level)
-
             user_card.current_power = new_stats['power']
             user_card.current_health = new_stats['health']
             user_card.current_attack = new_stats['attack']
@@ -705,19 +744,50 @@ async def upgrade_card(callback: types.CallbackQuery):
 
             await session.commit()
 
-            await callback.answer(
-                f"✨ Карта улучшена до {user_card.level} уровня!",
-                show_alert=False)
+            # Разница
+            diff_power = user_card.current_power - old_stats['power']
+            diff_health = user_card.current_health - old_stats['health']
+            diff_attack = user_card.current_attack - old_stats['attack']
+            diff_defense = user_card.current_defense - old_stats['defense']
 
-            # Обновляем отображение
-            await view_card_detail(callback)
+            # Прогресс до бонуса
+            next_ten_bonus = ((user_card.level // 10) + 1) * 10
+            levels_to_bonus = next_ten_bonus - user_card.level
+            ten_level_progress = user_card.level % 10 or 10
+            progress_bar = "█" * ten_level_progress + "░" * (10 - ten_level_progress)
 
-    except ValueError as e:
-        logger.error(f"ValueError в upgrade_card: {e}")
-        await callback.answer(f"❌ {str(e)}", show_alert=True)
+            text = f"""
+<b>✨ УЛУЧШЕНИЕ КАРТЫ</b>
+
+<b>{card.card_name}</b> [{card.rarity}]
+📈 <b>Уровень:</b> {old_stats['level']} → {user_card.level} (+1)
+
+<b>⚔️ ИЗМЕНЕНИЕ ХАРАКТЕРИСТИК:</b>
+💪 Сила:     {old_stats['power']} → {user_card.current_power} (+{diff_power})
+❤️ Здоровье: {old_stats['health']} → {user_card.current_health} (+{diff_health})
+⚔️ Атака:    {old_stats['attack']} → {user_card.current_attack} (+{diff_attack})
+🛡️ Защита:   {old_stats['defense']} → {user_card.current_defense} (+{diff_defense})
+
+<b>📊 ПРОГРЕСС:</b>
+Бонус за 10 уровней: +3% ко всем статам
+[{progress_bar}] {ten_level_progress}/10
+{levels_to_bonus} ур. до следующего бонуса
+
+💰 Потрачено пыли: {upgrade_cost}✨
+📦 Осталось пыли: {user.dust}✨
+"""
+
+            # Кнопки вынесены в keyboards.py
+            from bot.keyboards import upgrade_card_keyboard
+            keyboard = upgrade_card_keyboard(card_id)
+
+            await callback.message.edit_caption(caption=text, reply_markup=keyboard)
+            await callback.answer(f"✨ Уровень повышен! (+{diff_power} силы)", show_alert=False)
+
     except Exception as e:
         logger.exception(f"Ошибка upgrade_card: {e}")
         await callback.answer("❌ Произошла ошибка", show_alert=True)
+
 
 
 @router.callback_query(F.data == "profile")
@@ -771,6 +841,112 @@ ID: <code>{user.id}</code>
         await callback.message.edit_text(
             "❌ Произошла ошибка. Попробуйте позже.")
         await callback.answer()
+
+
+@router.callback_query(F.data.startswith("5x_upgrade_"))
+async def upgrade_card_5x(callback: types.CallbackQuery):
+    """Улучшить карту 5 раз"""
+    try:
+        card_id = int(callback.data.replace("5x_upgrade_", ""))
+
+        async with AsyncSessionLocal() as session:
+            user = await get_user_or_create(session, callback.from_user.id)
+
+            result = await session.execute(
+                select(UserCard, Card)
+                .join(Card, UserCard.card_id == Card.id)
+                .where(UserCard.id == card_id)
+            )
+            data = result.first()
+            if not data:
+                await callback.answer("❌ Карта не найдена", show_alert=True)
+                return
+
+            user_card, card = data
+
+            # Сохраняем старые статы
+            old_stats = {
+                'power': user_card.current_power,
+                'health': user_card.current_health,
+                'attack': user_card.current_attack,
+                'defense': user_card.current_defense,
+                'level': user_card.level
+            }
+
+            # Рассчитываем стоимость 5 улучшений
+            total_cost = 0
+            from game.upgrade_calculator import get_upgrade_cost, calculate_stats_for_level
+            for i in range(5):
+                if user_card.level + i >= 100:
+                    break
+                total_cost += get_upgrade_cost(card, user_card.level + i)
+
+            if user.dust < total_cost:
+                await callback.answer(f"❌ Не хватает пыли! Нужно: {total_cost}", show_alert=True)
+                return
+
+            # Применяем улучшения
+            upgrades_done = 0
+            for _ in range(5):
+                if user_card.level >= 100:
+                    break
+                user.dust -= get_upgrade_cost(card, user_card.level)
+                user_card.level += 1
+                upgrades_done += 1
+
+            # Пересчитываем финальные статы
+            new_stats = calculate_stats_for_level(card, user_card.level)
+            user_card.current_power = new_stats['power']
+            user_card.current_health = new_stats['health']
+            user_card.current_attack = new_stats['attack']
+            user_card.current_defense = new_stats['defense']
+            user_card.times_upgraded += upgrades_done
+
+            await session.commit()
+
+            # Разница
+            diff_power = user_card.current_power - old_stats['power']
+            diff_health = user_card.current_health - old_stats['health']
+            diff_attack = user_card.current_attack - old_stats['attack']
+            diff_defense = user_card.current_defense - old_stats['defense']
+
+            # Прогресс до бонуса
+            next_ten_bonus = ((user_card.level // 10) + 1) * 10
+            levels_to_bonus = next_ten_bonus - user_card.level
+            ten_level_progress = user_card.level % 10 or 10
+            progress_bar = "█" * ten_level_progress + "░" * (10 - ten_level_progress)
+
+            text = f"""
+<b>✨ УЛУЧШЕНИЕ КАРТЫ ×{upgrades_done}</b>
+
+<b>{card.card_name}</b> [{card.rarity}]
+📈 <b>Уровень:</b> {old_stats['level']} → {user_card.level} (+{upgrades_done})
+
+<b>⚔️ ИЗМЕНЕНИЕ ХАРАКТЕРИСТИК:</b>
+💪 Сила:     {old_stats['power']} → {user_card.current_power} (+{diff_power})
+❤️ Здоровье: {old_stats['health']} → {user_card.current_health} (+{diff_health})
+⚔️ Атака:    {old_stats['attack']} → {user_card.current_attack} (+{diff_attack})
+🛡️ Защита:   {old_stats['defense']} → {user_card.current_defense} (+{diff_defense})
+
+<b>📊 ПРОГРЕСС:</b>
+Бонус за 10 уровней: +3% ко всем статам
+[{progress_bar}] {ten_level_progress}/10
+{levels_to_bonus} ур. до следующего бонуса
+
+💰 Потрачено пыли: {total_cost}✨
+📦 Осталось пыли: {user.dust}✨
+"""
+
+            from bot.keyboards import upgrade_card_keyboard
+            keyboard = upgrade_card_keyboard(card_id)
+
+            await callback.message.edit_caption(caption=text, reply_markup=keyboard)
+            await callback.answer(f"✨ Карта улучшена {upgrades_done} раз!", show_alert=False)
+
+    except Exception as e:
+        logger.exception(f"Ошибка upgrade_5x: {e}")
+        await callback.answer("❌ Ошибка", show_alert=True)
+
 
 
 # 4. Хендлер просмотра карты (самый общий - ПОСЛЕ всех специфичных)
@@ -849,10 +1025,25 @@ async def view_card_detail(callback: types.CallbackQuery):
                                         upgrade_cost=upgrade_cost,
                                         user_dust=user.dust)
 
-        await callback.message.answer_photo(photo=card.original_url,
-                                            caption=text,
-                                            reply_markup=keyboard)
-        await callback.answer()
+        try: 
+            # Обновляем существующее сообщение
+            await callback.message.edit_media(
+                media=types.InputMediaPhoto(
+                    media=card.original_url,
+                    caption=text
+                ),
+                reply_markup=keyboard
+            )
+        except Exception as e:
+            logger.warning(f"Не удалось обновить сообщение: {e}")
+            # Если не получилось — отправляем новое
+            await callback.message.answer_photo(
+                photo=card.original_url,
+                caption=text,
+                reply_markup=keyboard
+            )
+
+        await callback.answer()    
 
     except Exception as e:
         logger.exception(f"Ошибка view_card_detail: {e}")

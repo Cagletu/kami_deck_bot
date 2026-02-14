@@ -430,30 +430,41 @@ async def exped_claim_all(callback: CallbackQuery):
                 return
     
             text = f"""
-    <b>🎁 ПОЛУЧЕНЫ НАГРАДЫ!</b>
-    
-    📊 <b>Экспедиций завершено:</b> {rewards["count"]}
-    
-    💰 <b>Монеты:</b> +{rewards["coins"]}
-    ✨ <b>Пыль:</b> +{rewards["dust"]}
-    """
+<b>🎁 ПОЛУЧЕНЫ НАГРАДЫ!</b>
+
+📊 <b>Экспедиций завершено:</b> {rewards["count"]}
+
+💰 <b>Монеты:</b> +{rewards["coins"]}
+✨ <b>Пыль:</b> +{rewards["dust"]}
+"""
+            # Если есть карты - отправляем их по одной с изображениями
             if rewards["cards"]:
-                text += "\n<b>📦 Полученные карты:</b>\n"
+                await callback.message.answer("<b>📦 ПОЛУЧЕННЫЕ КАРТЫ:</b>")
                 for card in rewards["cards"]:
-                    emoji = {'E':'⚪','D':'🟢','C':'⚡','B':'💫','A':'🔮','S':'⭐','ASS':'✨','SSS':'🏆'}.get(card.rarity,'🃏')
-                    text += f"• {emoji} {card.card_name} [{card.rarity}]\n"
+                    emoji = {
+                        'E':'⚪','D':'🟢','C':'⚡','B':'💫',
+                        'A':'🔮','S':'⭐','ASS':'✨','SSS':'🏆'
+                    }.get(card.rarity,'🃏')
+
+                    await callback.message.answer_photo(
+                        photo=card.original_url,
+                        caption=f"{emoji} <b>{card.card_name}</b> [{card.rarity}]\n✨ Новая карта из экспедиции!"
+                    )
     
-            await callback.message.edit_text(
-                text,
+            # Кнопка возврата
+            await callback.message.answer(
+                "🏠 Вернуться в меню",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="🏠 В меню экспедиций", callback_data="expedition")]
+                    [InlineKeyboardButton(text="🏕️ В экспедиции", callback_data="expedition")]
                 ])
             )
+
             await callback.answer()
 
     except Exception as e:
         logger.exception(f"Ошибка exped_claim_all: {e}")
         await callback.answer("❌ Произошла ошибка", show_alert=True)
+
 
 
 @router.callback_query(F.data == "exped_back_to_cards", StateFilter("*"))

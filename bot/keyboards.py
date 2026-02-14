@@ -286,4 +286,18 @@ def card_detail_keyboard(
     )
 
     return builder.as_markup()
+
+
+def upgrade_card_keyboard(card_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="➕ Ещё +1", callback_data=f"upgrade_{card_id}"),
+            InlineKeyboardButton(text="✖️ ×5", callback_data=f"5x_upgrade_{card_id}")
+        ],
+        [
+            # InlineKeyboardButton(text="🎯 До бонуса", callback_data=f"upgrade_to_bonus_{card_id}"),
+            InlineKeyboardButton(text="◀️ Назад", callback_data=f"view_card_{card_id}")
+        ]
+    ])
+
     

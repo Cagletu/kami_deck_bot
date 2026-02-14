@@ -91,38 +91,39 @@ class ExpeditionManager:
         return active, uncollected
 
     @staticmethod
-    async def calculate_rewards(session: AsyncSession, card_ids: List[int],
-                                duration_minutes: int) -> dict:
+    async def calculate_rewards(
+        session: AsyncSession,
+        card_ids: List[int],
+        duration_minutes: int
+    ) -> dict:
         """Рассчитать награды за экспедицию"""
-        # Базовая награда за 1 карту (исправить при проде на // вместо * оба)
-        base_coins = duration_minutes * 5  # 30м=6, 2ч=24, 6ч=72
-        base_dust = duration_minutes * 30000  # 30м=1, 2ч=4, 6ч=12
+        base_coins = duration_minutes // 5
+        base_dust = duration_minutes // 30
 
-        # Множитель за количество карт (1-3x)
+        # Множитель за количество карт (1x, 2x, 3x)
         card_multiplier = len(card_ids)
 
         # Проверяем бонус за одно аниме (только если карт >= 2)
         anime_bonus = False
         if len(card_ids) >= 2:
             cards_result = await session.execute(
-                select(Card).join(UserCard, UserCard.card_id == Card.id).where(
-                    UserCard.id.in_(card_ids)))
-        cards = cards_result.scalars().all()
-        anime_set = set(c.anime_name for c in cards)
-        anime_bonus = len(anime_set) == 1
+                select(Card)
+                .join(UserCard, UserCard.card_id == Card.id)
+                .where(UserCard.id.in_(card_ids))
+            )
+            cards = cards_result.scalars().all()
+            anime_set = set(c.anime_name for c in cards)
+            anime_bonus = len(anime_set) == 1
 
+        # Применяем бонус только если карт >= 2 и они из одного аниме
         if anime_bonus:
             card_multiplier = int(card_multiplier * 1.5)
 
-        # Шанс на карту: база 20% за карту в час + бонус за количество
-        base_chance_per_card_per_hour = 20  # 20% в час за карту
-        hours = duration_minutes / 60
+        # Шанс на карту
         card_chance = min(
-            int(hours * len(card_ids) * base_chance_per_card_per_hour), 100)
-
-        # Если аниме бонус и карт >= 2, увеличиваем шанс
-        if anime_bonus and len(card_ids) >= 2:
-            card_chance = min(int(card_chance * 1.2), 100)  # +20% к шансу
+            (duration_minutes // 60) * len(card_ids) * 20,
+            100
+        )
 
         # Редкость карты
         if duration_minutes <= 30:
@@ -265,7 +266,7 @@ class ExpeditionManager:
 
         if expedition.status != ExpeditionStatus.COMPLETED:
             if expedition.ends_at > datetime.now():
-                raise ValueError("Экспедиция еще не завершена")
+                raise ValueError("Экспедиция еще не завершена")                
             expedition.status = ExpeditionStatus.COMPLETED
 
         user = await session.get(User, expedition.user_id)
@@ -277,7 +278,8 @@ class ExpeditionManager:
         rewards = {
             "coins": expedition.reward_coins,
             "dust": expedition.reward_dust,
-            "card": None
+            "card": None,
+            "card_data": None  # для показа изображения
         }
 
         # Шанс на карту
@@ -296,6 +298,12 @@ class ExpeditionManager:
                                      source="expedition")
                 session.add(user_card)
                 rewards["card"] = card
+                rewards["card_data"] = {
+                    "id": card.id,
+                    "name": card.card_name,
+                    "rarity": card.rarity,
+                    "url": card.original_url
+                }
 
                 # Обновляем счетчик карт
                 user.cards_opened += 1
