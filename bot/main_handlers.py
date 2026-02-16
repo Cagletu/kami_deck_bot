@@ -718,7 +718,7 @@ async def toggle_deck_handler(callback: types.CallbackQuery):
             user_card.is_in_deck = not user_card.is_in_deck
             await session.commit()
 
-            status = "⚔️ добавлена в колоду" if user_card.is_in_deck else "📦 убрана из колоды"
+            status = "⚔️ карта добавлена в колоду" if user_card.is_in_deck else "📦 карта убрана из колоды"
             await callback.answer(status, show_alert=False)
 
             # Обновляем просмотр карты

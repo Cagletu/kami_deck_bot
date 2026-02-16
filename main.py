@@ -1,4 +1,4 @@
-# main.py (обновленная версия)
+# main.py
 import os
 import logging
 from datetime import datetime
@@ -20,6 +20,13 @@ from bot.main_handlers import router as main_router
 
 from bot.keyboards import set_bot_commands
 from sqlalchemy import text
+from bot.handlers.arena import router as arena_router
+
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse
+from pathlib import Path
+
+from services.redis_client import battle_storage
 
 
 load_dotenv()
@@ -45,6 +52,7 @@ storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 dp.include_router(expedition_router)
 dp.include_router(main_router)
+dp.include_router(arena_router)
 
 # ===== FASTAPI LIFESPAN =====
 @asynccontextmanager
@@ -52,6 +60,9 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("🚀 Запуск Kami Deck...")
     await set_bot_commands(bot)
+    
+    await battle_storage.connect()
+    
     yield
     # Shutdown
     await bot.session.close()
@@ -67,6 +78,23 @@ app = FastAPI(
 )
 
 # ===== ЭНДПОИНТЫ =====
+
+# Создаем папку static если её нет
+STATIC_DIR = Path("static")
+STATIC_DIR.mkdir(exist_ok=True)
+
+# Монтируем статические файлы
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Эндпоинт для арены
+@app.get("/arena", response_class=HTMLResponse)
+async def get_arena_page():
+    html_path = STATIC_DIR / "arena.html"
+    if html_path.exists():
+        return HTMLResponse(content=html_path.read_text(encoding="utf-8"))
+    return HTMLResponse(content="Arena page not found", status_code=404)
+
+# Основной эндпоинт
 @app.get("/")
 async def root():
     return {

@@ -27,7 +27,7 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(text="🃏 Коллекция",
-                             callback_data="collection_by_rarity"),
+                             callback_data="back_to_collection"),
         InlineKeyboardButton(text="📊 Профиль", callback_data="profile"),
     )
     builder.row(

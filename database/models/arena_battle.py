@@ -1,7 +1,8 @@
-from sqlalchemy import Column, Integer, ForeignKey, DateTime, JSON, String
+from sqlalchemy import Column, Integer, ForeignKey, DateTime, String
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from database.base import Base
+from sqlalchemy.dialects.postgresql import JSONB
 
 class ArenaBattle(Base):
     """Битва на арене"""
@@ -14,8 +15,8 @@ class ArenaBattle(Base):
     defender_id = Column(Integer, ForeignKey("users.id"))
 
     # Колоды игроков (ID из user_cards)
-    attacker_deck = Column(JSON)  # [1, 2, 3, 4, 5]
-    defender_deck = Column(JSON)
+    attacker_deck = Column(JSONB)  # [1, 2, 3, 4, 5]
+    defender_deck = Column(JSONB)
 
     # Результат
     winner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
