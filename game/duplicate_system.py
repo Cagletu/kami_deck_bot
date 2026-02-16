@@ -16,51 +16,63 @@ DUST_FOR_DUPLICATE = {
     'SSS': 1500
 }
 
-async def check_and_process_duplicates(
+async def check_for_duplicate(
     session: AsyncSession,
     user_id: int,
-    new_card_id: int
+    card_id: int
 ) -> dict:
-    """Проверить, есть ли у пользователя такая карта, и обработать дубликат"""
+    """Проверить, является ли карта дубликатом (ДО добавления в БД)"""
 
-    # Получаем информацию о новой карте
-    result = await session.execute(
-        select(Card).where(Card.id == new_card_id)
+    # Получаем информацию о карте
+    card_result = await session.execute(
+        select(Card).where(Card.id == card_id)
     )
-    new_card = result.scalar_one_or_none()
+    card = card_result.scalar_one_or_none()
 
-    if not new_card:
-        return {"is_duplicate": False, "dust_earned": 0}
+    if not card:
+        return {"is_duplicate": False, "dust_earned": 0, "card": None}
 
     # Проверяем, есть ли у пользователя такая карта
-    result = await session.execute(
+    existing = await session.execute(
         select(UserCard)
         .where(
             and_(
                 UserCard.user_id == user_id,
-                UserCard.card_id == new_card_id
+                UserCard.card_id == card_id
             )
         )
     )
-    existing_cards = result.scalars().all()
+    existing_card = existing.scalar_one_or_none()
 
-    # Если это первая карта - не дубликат
-    if len(existing_cards) == 0:
-        return {"is_duplicate": False, "dust_earned": 0, "card": new_card}
+    # Если карта уже есть - это дубликат
+    if existing_card:
+        dust_earned = DUST_FOR_DUPLICATE.get(card.rarity, 75)
+        return {
+            "is_duplicate": True,
+            "dust_earned": dust_earned,
+            "card": card,
+            "existing_card_id": existing_card.id
+        }
 
-    # Это дубликат - выдаем пыль
-    dust_earned = DUST_FOR_DUPLICATE.get(new_card.rarity, 75)
-
-    # Находим пользователя и начисляем пыль
-    from database.models.user import User
-    user = await session.get(User, user_id)
-    user.dust += dust_earned
-    user.total_duplicates_dusted += 1
-
+    # Если карты нет - это новая карта
     return {
-        "is_duplicate": True,
-        "dust_earned": dust_earned,
-        "card": new_card,
-        "duplicate_count": len(existing_cards) + 1
+        "is_duplicate": False,
+        "dust_earned": 0,
+        "card": card
     }
+
+
+async def process_duplicate(
+    session: AsyncSession,
+    user_id: int,
+    card_id: int,
+    dust_earned: int
+) -> None:
+    """Обработать дубликат (начислить пыль, НЕ добавлять карту)"""
+    from database.models.user import User
+
+    user = await session.get(User, user_id)
+    if user:
+        user.dust += dust_earned
+        user.total_duplicates_dusted += 1
     

@@ -182,7 +182,7 @@ async def _open_pack_transaction(user_id: int, pack_type: str, session: AsyncSes
         raise ValueError("Неизвестный тип пака")
 
     pity_a_max = settings.get("pity_a", 10)
-    pity_s_max = settings.get("pity_s", 30)
+    pity_s_max = settings.get("pity_s", 50)
 
     user = await session.get(User, user_id)
     if user.coins < settings["price"]:
@@ -203,6 +203,9 @@ async def _open_pack_transaction(user_id: int, pack_type: str, session: AsyncSes
     cards = []
     rarities = []
     guaranteed_rarity = None
+
+    # Временно храним ID карт, которые будем добавлять
+    new_card_ids = []
 
     for _ in range(settings["cards_count"]):
         # Pity
@@ -232,18 +235,7 @@ async def _open_pack_transaction(user_id: int, pack_type: str, session: AsyncSes
 
         cards.append(card)
         rarities.append(rarity)
-
-        user_card = UserCard(
-            user_id=user_id,
-            card_id=card.id,
-            level=1,
-            current_power=card.base_power,
-            current_health=card.base_health,
-            current_attack=card.base_attack,
-            current_defense=card.base_defense,
-            source="pack"
-        )
-        session.add(user_card)
+        new_card_ids.append(card.id)
 
         # 🔥 Увеличиваем счётчик открытых карт
         user.cards_opened += 1
@@ -270,7 +262,7 @@ async def _open_pack_transaction(user_id: int, pack_type: str, session: AsyncSes
     session.add(pack_open)
     await session.commit()
 
-    return cards, pack_open
+    return cards, pack_open, new_card_ids
 
 # ===== ЭКСПЕДИЦИИ =====
 
