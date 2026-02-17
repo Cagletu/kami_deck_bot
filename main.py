@@ -83,6 +83,20 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # ===== ЭНДПОИНТЫ =====
 
+@app.get("/test-arena")
+async def test_arena():
+    return HTMLResponse("""
+    <html>
+        <body>
+            <h1>Тестовая страница</h1>
+            <p>Если вы это видите - сервер работает</p>
+            <p><a href="/static/arena.html">Перейти к арене</a></p>
+            <p><a href="/arena.html">Перейти к корневой арене</a></p>
+        </body>
+    </html>
+    """)
+    
+
 # Эндпоинт для arena.html
 @app.get("/arena.html", response_class=HTMLResponse)
 async def get_arena():
