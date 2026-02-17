@@ -184,15 +184,19 @@
     </div>
 
     <script>
-        let tg = window.Telegram?.WebApp;
-        
-        if (!tg) {
-            console.error('Telegram WebApp не найден');
-            document.body.innerHTML = '<div style="color:red; padding:20px;">Ошибка: Telegram WebApp не загружен</div>';
-        } else {
-            tg.expand(); // Растягиваем на весь экран
-            tg.ready(); // Сообщаем Telegram что приложение готово
-            console.log('Telegram WebApp инициализирован');
+        let tg = null;
+        try {
+            tg = window.Telegram?.WebApp;
+            if (tg) {
+                tg.expand();
+                tg.ready();
+                console.log('Telegram WebApp инициализирован');
+            } else {
+                console.log('Режим разработки: Telegram WebApp не загружен');
+                // Не показываем ошибку, просто логируем
+            }
+        } catch (e) {
+            console.log('Режим разработки');
         }
         
         let playerCards = [];

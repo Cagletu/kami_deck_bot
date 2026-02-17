@@ -21,7 +21,7 @@ router = Router()
 logger = logging.getLogger(__name__)
 
 # URL для WebApp (ваш Railway домен)
-WEBAPP_URL = "https://kamideckbot-production.up.railway.app/static/arena.html"
+WEBAPP_URL = "https://kamideckbot-production.up.railway.app/arena.html"
 
 async def get_user_deck(user_id: int) -> list:
     """Получает колоду пользователя (до 5 карт)"""

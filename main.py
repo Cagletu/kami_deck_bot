@@ -97,26 +97,36 @@ async def test_arena():
     """)
     
 
-# Эндпоинт для arena.html
 @app.get("/arena.html", response_class=HTMLResponse)
 async def get_arena():
+    """Основной эндпоинт для WebApp"""
     try:
-        with open("arena.html", "r", encoding="utf-8") as f:
-            content = f.read()
-        return HTMLResponse(content=content)
-    except FileNotFoundError:
-        return HTMLResponse(content="<h1>Arena file not found</h1>", status_code=404)
+        # Ищем файл сначала в корне, потом в static
+        for path in ["arena.html", "static/arena.html"]:
+            if Path(path).exists():
+                with open(path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                return HTMLResponse(content=content)
 
-# Альтернативный эндпоинт для WebApp
-@app.get("/arena")
-async def arena_redirect():
+        # Если файл не найден
+        return HTMLResponse(
+            content="<h1>Arena file not found</h1><p>Checked: arena.html, static/arena.html</p>", 
+            status_code=404
+        )
+    except Exception as e:
+        return HTMLResponse(content=f"<h1>Error: {e}</h1>", status_code=500)
+
+# Редирект с /static на основной эндпоинт
+@app.get("/static/arena.html")
+async def static_arena_redirect():
+    """Редирект с /static на основной эндпоинт"""
     return HTMLResponse(content="""
     <html>
         <head>
             <meta http-equiv="refresh" content="0;url=/arena.html">
         </head>
         <body>
-            <p>Redirecting to arena...</p>
+            <p>Redirecting to /arena.html...</p>
         </body>
     </html>
     """)
