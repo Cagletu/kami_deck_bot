@@ -16,11 +16,12 @@ from aiogram.client.default import DefaultBotProperties
 from database.base import engine, AsyncSessionLocal
 from bot.handlers.expedition import router as expedition_router
 from bot.main_handlers import router as main_router
+from bot.handlers.arena import router as arena_router
+from bot.handlers.arena_callback import router as arena_callback_router
 
 
 from bot.keyboards import set_bot_commands
 from sqlalchemy import text
-from bot.handlers.arena import router as arena_router
 
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
@@ -53,6 +54,7 @@ dp = Dispatcher(storage=storage)
 dp.include_router(expedition_router)
 dp.include_router(main_router)
 dp.include_router(arena_router)
+dp.include_router(arena_callback_router)
 
 # ===== FASTAPI LIFESPAN =====
 @asynccontextmanager

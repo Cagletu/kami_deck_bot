@@ -34,6 +34,9 @@ from bot.keyboards import (
     card_detail_keyboard,
 )
 
+# URL для WebApp (ваш Railway домен)
+WEBAPP_URL = "https://kamideckbot-production.up.railway.app/arena.html"
+
 router = Router()
 logger = logging.getLogger(__name__)
 
@@ -1284,26 +1287,6 @@ async def collection_strongest(callback: types.CallbackQuery):
     except Exception as e:
         logger.exception(f"Ошибка collection_strongest: {e}")
         await callback.answer("❌ Ошибка", show_alert=True)
-
-
-# Обновите кнопку "Начать битву"
-@router.callback_query(F.data == "arena_battle")
-async def start_arena(callback: types.CallbackQuery):
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text="⚔️ НАЧАТЬ БИТВУ",
-            web_app=WebAppInfo(url="https://anime-cards-production.up.railway.app/arena.html")
-        )],
-        [InlineKeyboardButton(text="🏠 ЗАКРЫТЬ", callback_data="back_to_main")]
-    ])
-
-    await callback.message.edit_text(
-        "⚔️ <b>АРЕНА</b>\n\n"
-        "Нажмите кнопку чтобы открыть арену",
-        reply_markup=keyboard
-    )
-    await callback.answer()
-
 
 
 # 4. Хендлер просмотра карты (самый общий - ПОСЛЕ всех специфичных)
