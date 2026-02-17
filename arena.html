@@ -71,6 +71,8 @@
             border: 1px solid rgba(255,255,255,0.1);
             cursor: pointer;
             transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
         }
         
         .card-slot:hover {
@@ -83,16 +85,44 @@
             background: rgba(255,107,107,0.1);
         }
         
+        .card-slot.dead {
+            opacity: 0.5;
+            filter: grayscale(1);
+            cursor: not-allowed;
+        }
+        
         .card-name {
             font-weight: bold;
             margin-bottom: 5px;
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .card-rarity {
+            font-size: 12px;
+            color: #ffd700;
         }
         
         .card-stats {
             display: flex;
-            gap: 10px;
-            font-size: 12px;
+            gap: 8px;
+            font-size: 11px;
             color: rgba(255,255,255,0.7);
+            flex-wrap: wrap;
+        }
+        
+        .health-bar {
+            height: 4px;
+            background: rgba(255,0,0,0.3);
+            border-radius: 2px;
+            margin-top: 5px;
+            overflow: hidden;
+        }
+        
+        .health-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ff6b6b, #ff8e8e);
+            transition: width 0.3s;
         }
         
         .controls {
@@ -121,11 +151,6 @@
             background: linear-gradient(135deg, #f093fb, #f5576c);
         }
         
-        .button:hover {
-            transform: translateY(-2px);
-            filter: brightness(1.1);
-        }
-        
         .button:disabled {
             opacity: 0.5;
             cursor: not-allowed;
@@ -139,12 +164,21 @@
             margin-top: 20px;
             max-height: 150px;
             overflow-y: auto;
+            font-size: 13px;
         }
         
         .log-entry {
             padding: 5px;
             border-bottom: 1px solid rgba(255,255,255,0.1);
-            font-size: 14px;
+        }
+        
+        .log-entry.critical {
+            color: #ff6b6b;
+            font-weight: bold;
+        }
+        
+        .log-entry.dodge {
+            color: #4ecdc4;
         }
         
         .enemy-card {
@@ -153,6 +187,36 @@
             background: rgba(255,107,107,0.1);
             border-radius: 10px;
             margin-bottom: 10px;
+            position: relative;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: rgba(255,255,255,0.5);
+        }
+        
+        .damage-number {
+            position: absolute;
+            color: #ff6b6b;
+            font-weight: bold;
+            font-size: 20px;
+            animation: floatUp 1s ease-out;
+            pointer-events: none;
+        }
+        
+        @keyframes floatUp {
+            0% { opacity: 1; transform: translateY(0); }
+            100% { opacity: 0; transform: translateY(-50px); }
+        }
+        
+        .reward-box {
+            background: rgba(78,205,196,0.2);
+            border: 1px solid #4ecdc4;
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 20px;
+            text-align: center;
         }
     </style>
 </head>
@@ -178,50 +242,95 @@
         <div class="battle-log" id="battle-log"></div>
         
         <div class="controls">
-            <button class="button auto" onclick="autoBattle()" id="autoBtn">⚡ АВТОБОЙ</button>
+            <button class="button auto" onclick="makeTurn()" id="autoBtn">⚡ СДЕЛАТЬ ХОД</button>
             <button class="button close" onclick="closeArena()">🏠 ЗАКРЫТЬ</button>
         </div>
     </div>
 
     <script>
         let tg = null;
+        let battleId = null;
+        let playerCards = [];
+        let enemyCards = [];
+        let currentTurn = 0;
+        let battleLog = [];
+        let battleFinished = false;
+        
+        // Инициализация Telegram WebApp
         try {
             tg = window.Telegram?.WebApp;
             if (tg) {
                 tg.expand();
                 tg.ready();
                 console.log('Telegram WebApp инициализирован');
+                
+                // Получаем battle_id из URL
+                const urlParams = new URLSearchParams(window.location.search);
+                battleId = urlParams.get('battle_id');
+                console.log('Battle ID:', battleId);
+                
+                if (battleId) {
+                    loadBattleData();
+                } else {
+                    addLog('❌ Ошибка: не указан ID битвы');
+                }
             } else {
-                console.log('Режим разработки: Telegram WebApp не загружен');
-                // Не показываем ошибку, просто логируем
+                console.log('Режим разработки: используем тестовые данные');
+                // В режиме разработки создаем тестовый battleId
+                battleId = 'test_battle_123';
+                loadBattleData();
             }
         } catch (e) {
-            console.log('Режим разработки');
+            console.log('Ошибка инициализации:', e);
         }
         
-        let playerCards = [];
-        let enemyCards = [];
-        let currentTurn = 0;
-        let battleLog = [];
-        
-        // Загружаем данные о колоде
-        async function loadDeck() {
+        // Загрузка данных битвы
+        async function loadBattleData() {
             try {
-                // Получаем данные из initData
-                const initData = tg?.initData || '';
-                console.log('Init data:', initData);
+                addLog('🔄 Загрузка данных битвы...');
                 
-                // Здесь нужно сделать запрос к вашему бэкенду
-                // Пока используем тестовые данные
-                playerCards = [
-                    { id: 1, name: 'Карта 1', power: 100, health: 500, attack: 50, defense: 30 },
-                    { id: 2, name: 'Карта 2', power: 150, health: 450, attack: 70, defense: 40 },
-                    { id: 3, name: 'Карта 3', power: 120, health: 550, attack: 60, defense: 35 }
-                ];
+                const response = await fetch(`/api/battle/${battleId}`);
+                const data = await response.json();
                 
-                renderPlayerCards();
+                if (data.success) {
+                    playerCards = data.player_cards || [];
+                    enemyCards = data.enemy_cards || [];
+                    currentTurn = data.turn || 0;
+                    
+                    renderPlayerCards();
+                    renderEnemyCards();
+                    updateTurnCounter();
+                    
+                    addLog('✅ Битва загружена!');
+                } else {
+                    addLog(`❌ Ошибка: ${data.error || 'Неизвестная ошибка'}`);
+                    // Если API не работает, используем тестовые данные
+                    useTestData();
+                }
             } catch (error) {
+                console.error('Ошибка загрузки:', error);
+                addLog('❌ Ошибка загрузки данных битвы');
+                // При ошибке используем тестовые данные
+                useTestData();
             }
+        }
+        
+        // Тестовые данные (резервный вариант)
+        function useTestData() {
+            playerCards = [
+                { id: 1, name: 'Карта 1', power: 100, health: 500, max_health: 500, attack: 50, defense: 30, level: 1, rarity: 'A' },
+                { id: 2, name: 'Карта 2', power: 150, health: 450, max_health: 450, attack: 70, defense: 40, level: 2, rarity: 'S' },
+                { id: 3, name: 'Карта 3', power: 120, health: 550, max_health: 550, attack: 60, defense: 35, level: 1, rarity: 'B' }
+            ];
+            enemyCards = [
+                { id: -1, name: 'Враг 1', power: 80, health: 400, max_health: 400, attack: 40, defense: 20, level: 1, rarity: 'B' },
+                { id: -2, name: 'Враг 2', power: 90, health: 380, max_health: 380, attack: 45, defense: 25, level: 1, rarity: 'B' },
+                { id: -3, name: 'Враг 3', power: 70, health: 420, max_health: 420, attack: 35, defense: 30, level: 1, rarity: 'C' }
+            ];
+            
+            renderPlayerCards();
+            renderEnemyCards();
+            addLog('👹 Используются тестовые данные');
         }
         
         function renderPlayerCards() {
@@ -229,16 +338,37 @@
             container.innerHTML = '';
             
             playerCards.forEach((card, index) => {
+                if (!card) return;
+                
+                const healthPercent = (card.health / card.max_health) * 100;
+                const isDead = card.health <= 0;
+                
                 const cardEl = document.createElement('div');
-                cardEl.className = 'card-slot';
-                cardEl.onclick = () => selectCard(index);
+                cardEl.className = `card-slot ${isDead ? 'dead' : ''}`;
+                if (!isDead) {
+                    cardEl.onclick = () => selectCard(index);
+                }
+                
+                const rarityColors = {
+                    'E': '#808080', 'D': '#00ff00', 'C': '#00ffff',
+                    'B': '#800080', 'A': '#0000ff', 'S': '#ffd700',
+                    'ASS': '#ff69b4', 'SSS': '#ff0000'
+                };
+                
                 cardEl.innerHTML = `
-                    <div class="card-name">${card.name}</div>
+                    <div class="card-name">
+                        <span>${card.name}</span>
+                        <span class="card-rarity" style="color: ${rarityColors[card.rarity] || '#fff'}">${card.rarity || ''}</span>
+                    </div>
                     <div class="card-stats">
                         <span>💪 ${card.power}</span>
-                        <span>❤️ ${card.health}</span>
+                        <span>❤️ ${Math.max(0, card.health)}/${card.max_health}</span>
                         <span>⚔️ ${card.attack}</span>
                         <span>🛡️ ${card.defense}</span>
+                        <span>📈 ${card.level || 1}</span>
+                    </div>
+                    <div class="health-bar">
+                        <div class="health-bar-fill" style="width: ${Math.max(0, healthPercent)}%"></div>
                     </div>
                 `;
                 container.appendChild(cardEl);
@@ -250,99 +380,125 @@
             container.innerHTML = '';
             
             enemyCards.forEach(card => {
+                if (!card) return;
+                
+                const healthPercent = (card.health / card.max_health) * 100;
+                
                 const cardEl = document.createElement('div');
                 cardEl.className = 'enemy-card';
                 cardEl.innerHTML = `
                     <div class="card-name">${card.name}</div>
                     <div class="card-stats">
                         <span>💪 ${card.power}</span>
-                        <span>❤️ ${card.health}</span>
+                        <span>❤️ ${Math.max(0, card.health)}/${card.max_health}</span>
+                        <span>⚔️ ${card.attack}</span>
+                        <span>🛡️ ${card.defense}</span>
+                    </div>
+                    <div class="health-bar">
+                        <div class="health-bar-fill" style="width: ${Math.max(0, healthPercent)}%"></div>
                     </div>
                 `;
                 container.appendChild(cardEl);
             });
         }
         
-        function addLog(message) {
-            battleLog.push(message);
+        function addLog(message, type = 'normal') {
+            battleLog.push({ message, type });
             const logContainer = document.getElementById('battle-log');
             const logEntry = document.createElement('div');
-            logEntry.className = 'log-entry';
+            logEntry.className = `log-entry ${type}`;
             logEntry.textContent = message;
             logContainer.appendChild(logEntry);
             logContainer.scrollTop = logContainer.scrollHeight;
         }
         
         function selectCard(index) {
+            if (battleFinished) return;
+            
             document.querySelectorAll('.card-slot').forEach(el => el.classList.remove('selected'));
             event.currentTarget.classList.add('selected');
             
-            // Здесь можно добавить логику выбора карты для атаки
+            // Здесь можно добавить выбор карты для ручной атаки
         }
         
-        async function autoBattle() {
+        async function makeTurn() {
+            if (battleFinished) return;
+            
             const btn = document.getElementById('autoBtn');
             btn.disabled = true;
-            btn.textContent = '⚡ БОЙ ИДЕТ...';
             
             try {
-                // Генерируем противника
-                generateEnemy();
+                const response = await fetch('/api/battle/turn', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ battle_id: battleId })
+                });
                 
-                // Простая логика боя
-                for (let i = 0; i < playerCards.length && i < enemyCards.length; i++) {
-                    currentTurn++;
-                    document.getElementById('turn').textContent = currentTurn;
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Обновляем данные
+                    if (data.player_cards) playerCards = data.player_cards;
+                    if (data.enemy_cards) enemyCards = data.enemy_cards;
+                    if (data.turn) currentTurn = data.turn;
                     
-                    const playerCard = playerCards[i];
-                    const enemyCard = enemyCards[i];
-                    
-                    // Расчет урона
-                    const playerDamage = Math.max(1, playerCard.attack - enemyCard.defense);
-                    const enemyDamage = Math.max(1, enemyCard.attack - playerCard.defense);
-                    
-                    addLog(`⚔️ Ход ${currentTurn}: ${playerCard.name} атакует ${enemyCard.name}`);
-                    
-                    // Задержка для анимации
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                    
-                    enemyCard.health -= playerDamage;
-                    addLog(`💥 ${enemyCard.name} получает ${playerDamage} урона`);
-                    
-                    if (enemyCard.health <= 0) {
-                        addLog(`✅ ${enemyCard.name} повержен!`);
-                        enemyCards.splice(i, 1);
-                        i--;
+                    // Добавляем логи
+                    if (data.log) {
+                        data.log.forEach(log => addLog(log));
                     }
                     
-                    await new Promise(resolve => setTimeout(resolve, 500));
+                    // Проверяем победителя
+                    if (data.winner) {
+                        battleFinished = true;
+                        if (data.winner === 'player') {
+                            addLog('🎉 ПОБЕДА!', 'critical');
+                            showRewards(data.rewards);
+                        } else {
+                            addLog('😔 Поражение...', 'normal');
+                        }
+                    }
                     
-                    if (enemyCards.length === 0) break;
-                }
-                
-                if (enemyCards.length === 0) {
-                    addLog('🎉 ПОБЕДА!');
+                    // Обновляем интерфейс
+                    renderPlayerCards();
+                    renderEnemyCards();
+                    updateTurnCounter();
                 } else {
-                    addLog('😔 Поражение...');
+                    addLog(`❌ Ошибка: ${data.error || 'Неизвестная ошибка'}`);
                 }
-                
-                renderEnemyCards();
             } catch (error) {
-                addLog('❌ Ошибка боя');
+                console.error('Ошибка хода:', error);
+                addLog('❌ Ошибка при выполнении хода');
             } finally {
                 btn.disabled = false;
-                btn.textContent = '⚡ АВТОБОЙ';
             }
         }
         
-        function generateEnemy() {
-            enemyCards = [
-                { name: 'Враг 1', power: 80, health: 400, attack: 40, defense: 20 },
-                { name: 'Враг 2', power: 90, health: 380, attack: 45, defense: 25 },
-                { name: 'Враг 3', power: 70, health: 420, attack: 35, defense: 30 }
-            ];
-            renderEnemyCards();
-            addLog('👹 Противник появился!');
+        function updateTurnCounter() {
+            document.getElementById('turn').textContent = currentTurn;
+        }
+        
+        function showRewards(rewards) {
+            if (!rewards) return;
+            
+            const container = document.querySelector('.arena-container');
+            const rewardDiv = document.createElement('div');
+            rewardDiv.className = 'reward-box';
+            rewardDiv.innerHTML = `
+                <h3>🎁 НАГРАДЫ</h3>
+                <p>💰 Монеты: +${rewards.coins || 0}</p>
+                <p>✨ Пыль: +${rewards.dust || 0}</p>
+                <p>📈 Рейтинг: +${rewards.rating || 0}</p>
+            `;
+            container.appendChild(rewardDiv);
+            
+            // Отправляем результат боя в Telegram
+            if (tg) {
+                tg.sendData(JSON.stringify({
+                    action: 'battle_result',
+                    result: 'win',
+                    rewards: rewards
+                }));
+            }
         }
         
         function closeArena() {
@@ -351,10 +507,7 @@
             }
         }
         
-        // Загружаем данные при старте
-        loadDeck();
-        
-        // Добавляем обработку ошибок
+        // Обработка ошибок
         window.onerror = function(msg, url, line) {
             console.error('Ошибка:', msg, url, line);
             addLog(`❌ Ошибка: ${msg}`);
