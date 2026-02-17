@@ -61,7 +61,8 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Запуск Kami Deck...")
     await set_bot_commands(bot)
     
-    await battle_storage.connect()
+    if os.getenv("REDIS_URL"):  # только если Redis настроен
+        await battle_storage.connect()
     
     yield
     # Shutdown
@@ -77,22 +78,34 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# ===== ЭНДПОИНТЫ =====
-
-# Создаем папку static если её нет
-STATIC_DIR = Path("static")
-STATIC_DIR.mkdir(exist_ok=True)
-
 # Монтируем статические файлы
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Эндпоинт для арены
-@app.get("/arena", response_class=HTMLResponse)
-async def get_arena_page():
-    html_path = STATIC_DIR / "arena.html"
-    if html_path.exists():
-        return HTMLResponse(content=html_path.read_text(encoding="utf-8"))
-    return HTMLResponse(content="Arena page not found", status_code=404)
+# ===== ЭНДПОИНТЫ =====
+
+# Эндпоинт для arena.html
+@app.get("/arena.html", response_class=HTMLResponse)
+async def get_arena():
+    try:
+        with open("arena.html", "r", encoding="utf-8") as f:
+            content = f.read()
+        return HTMLResponse(content=content)
+    except FileNotFoundError:
+        return HTMLResponse(content="<h1>Arena file not found</h1>", status_code=404)
+
+# Альтернативный эндпоинт для WebApp
+@app.get("/arena")
+async def arena_redirect():
+    return HTMLResponse(content="""
+    <html>
+        <head>
+            <meta http-equiv="refresh" content="0;url=/arena.html">
+        </head>
+        <body>
+            <p>Redirecting to arena...</p>
+        </body>
+    </html>
+    """)
 
 # Основной эндпоинт
 @app.get("/")

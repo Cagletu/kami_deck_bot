@@ -35,8 +35,11 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
                              callback_data="open_pack"),
         InlineKeyboardButton(text="🏕️ Экспедиции", callback_data="expedition"),
     )
+    builder.row(
+        InlineKeyboardButton(text="⚔️ Арена", callback_data="arena_battle"),
+    )
     return builder.as_markup()
-
+    
 
 def collection_menu_keyboard() -> InlineKeyboardMarkup:
     """Меню коллекции"""

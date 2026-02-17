@@ -17,6 +17,7 @@ from game.duplicate_system import check_for_duplicate, process_duplicate
 from sqlalchemy import func, and_
 
 from sqlalchemy import select
+from aiogram.types import WebAppInfo
 
 from database.crud import (
     get_user_or_create,
@@ -998,8 +999,6 @@ async def upgrade_card_5x(callback: types.CallbackQuery):
         await callback.answer("❌ Ошибка", show_alert=True)
 
 
-# bot/main_handlers.py - добавляем новые хендлеры
-
 @router.callback_query(F.data == "collection_by_anime")
 async def collection_by_anime(callback: types.CallbackQuery):
     """Показать коллекцию, сгруппированную по аниме"""
@@ -1287,7 +1286,30 @@ async def collection_strongest(callback: types.CallbackQuery):
         await callback.answer("❌ Ошибка", show_alert=True)
 
 
+# Обновите кнопку "Начать битву"
+@router.callback_query(F.data == "arena_battle")
+async def start_arena(callback: types.CallbackQuery):
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="⚔️ НАЧАТЬ БИТВУ",
+            web_app=WebAppInfo(url="https://anime-cards-production.up.railway.app/arena.html")
+        )],
+        [InlineKeyboardButton(text="🏠 ЗАКРЫТЬ", callback_data="back_to_main")]
+    ])
 
+    await callback.message.edit_text(
+        "⚔️ <b>АРЕНА</b>\n\n"
+        "Нажмите кнопку чтобы открыть арену",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+
+
+
+# 4. Хендлер просмотра карты (самый общий - ПОСЛЕ всех специфичных)
+# 4. Хендлер просмотра карты (самый общий - ПОСЛЕ всех специфичных)
+# 4. Хендлер просмотра карты (самый общий - ПОСЛЕ всех специфичных)
+# 4. Хендлер просмотра карты (самый общий - ПОСЛЕ всех специфичных)
 # 4. Хендлер просмотра карты (самый общий - ПОСЛЕ всех специфичных)
 
 

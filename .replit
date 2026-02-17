@@ -2,6 +2,7 @@ run = "bash main.sh"
 
 entrypoint = "main.py"
 modules = ["python-3.11"]
+hidden = ["ngrok"]
 
 [nix]
 channel = "stable-25_05"
@@ -15,6 +16,7 @@ requiredFiles = [".replit", "replit.nix"]
 
 [deployment]
 run = ["python3", "main.py"]
+preview = false
 deploymentTarget = "cloudrun"
 
 [agent]
