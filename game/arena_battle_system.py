@@ -43,7 +43,8 @@ class BattleCard:
             "defense": self.defense,
             "level": self.level,
             "image_url": self.image_url,
-            "position": self.position
+            "position": self.position,
+            "is_alive": self.is_alive()
         }
 
 @dataclass

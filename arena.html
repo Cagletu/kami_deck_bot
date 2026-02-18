@@ -392,6 +392,8 @@
             const btn = document.getElementById('nextTurnBtn');
             btn.disabled = true;
             btn.textContent = '⚡ БОЙ ИДЕТ...';
+
+            let data = null; // 👈 ВАЖНО: объявляем заранее
             
             try {
                 const response = await fetch('/api/battle/turn', {

@@ -1198,6 +1198,7 @@ async def collection_stats(callback: types.CallbackQuery):
                     UserCard.is_in_deck == True
                 )
             ) or 0
+            logger.info(f"Collection user: tg_id={callback.from_user.id}, db_id={user.id}")
 
 
             text = f"""

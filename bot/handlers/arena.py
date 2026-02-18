@@ -133,6 +133,8 @@ async def cmd_arena(message: types.Message):
         # Получаем колоду пользователя
         user_deck = await get_user_deck(user.id)
 
+        logger.info(f"Arena user: tg_id={message.from_user.id}, db_id={user.id}")
+
         if len(user_deck) < 5:
             await message.answer(
                 "❌ <b>Недостаточно карт в колоде!</b>\n\n"
