@@ -220,25 +220,27 @@ async def health_check():
 
 
 # API эндпоинты
-@app.get("/api/battle/{battle_id}", response_model=BattleResponse)
+@app.get("/api/battle/{battle_id}")
 async def get_battle(battle_id: str):
     """Получить состояние битвы"""
     try:
         battle_data = await battle_storage.get_battle(battle_id)
         if not battle_data:
-            # Если битва не найдена, создаем тестовую
-            return await create_test_battle(battle_id)
+            logger.error(f"Battle {battle_id} not found in Redis")
+            return {"success": False, "error": "Battle not found"}
 
-        # Преобразуем карты в нужный формат
+        # Преобразуем данные для отправки
         player_cards = []
-        for card in battle_data.get("player_cards", []):
-            if isinstance(card, dict):
-                player_cards.append(card)
-
         enemy_cards = []
-        for card in battle_data.get("enemy_cards", []):
-            if isinstance(card, dict):
-                enemy_cards.append(card)
+
+        # Восстанавливаем карты из сохраненных данных
+        for card_data in battle_data.get("player_cards", []):
+            if isinstance(card_data, dict):
+                player_cards.append(card_data)
+
+        for card_data in battle_data.get("enemy_cards", []):
+            if isinstance(card_data, dict):
+                enemy_cards.append(card_data)
 
         return {
             "success": True,
@@ -248,159 +250,105 @@ async def get_battle(battle_id: str):
         }
     except Exception as e:
         logger.exception(f"Error in get_battle: {e}")
-        return {
-            "success": False, 
-            "error": str(e),
-            "player_cards": [],
-            "enemy_cards": []
-        }
+        return {"success": False, "error": str(e)}
 
-@app.post("/api/battle/turn", response_model=BattleResponse)
+@app.post("/api/battle/turn")
 async def battle_turn(request: TurnRequest):
     """Выполнить ход в битве"""
     try:
         battle_data = await battle_storage.get_battle(request.battle_id)
         if not battle_data:
-            return {
-                "success": False, 
-                "error": "Battle not found",
-                "player_cards": [],
-                "enemy_cards": []
-            }
+            return {"success": False, "error": "Battle not found"}
 
-        # Получаем текущее состояние
-        player_cards = battle_data.get("player_cards", [])
-        enemy_cards = battle_data.get("enemy_cards", [])
-        current_turn = battle_data.get("turn", 0)
+        # Восстанавливаем карты из сохраненных данных
+        player_cards_dict = {}
+        enemy_cards_dict = {}
 
-        # Простая логика боя (пока тестовая)
-        log = []
+        # Создаем объекты карт для боя
+        for card_data in battle_data.get("player_cards", []):
+            card = BattleCard(
+                id=card_data["id"],
+                user_card_id=card_data["user_card_id"],
+                name=card_data["name"],
+                rarity=card_data.get("rarity", "E"),
+                anime=card_data.get("anime", ""),
+                power=card_data["power"],
+                health=card_data["health"],
+                max_health=card_data["max_health"],
+                attack=card_data["attack"],
+                defense=card_data["defense"],
+                level=card_data.get("level", 1),
+                image_url=card_data.get("image_url", ""),
+                position=card_data.get("position", 0)
+            )
+            player_cards_dict[card.id] = card
 
-        # Проверяем что битва не закончена
-        if battle_data.get("winner"):
-            return {
-                "success": True,
-                "player_cards": player_cards,
-                "enemy_cards": enemy_cards,
-                "turn": current_turn,
-                "log": ["Битва уже завершена"],
-                "winner": battle_data["winner"]
-            }
+        for card_data in battle_data.get("enemy_cards", []):
+            card = BattleCard(
+                id=card_data["id"],
+                user_card_id=card_data.get("user_card_id", -card_data["id"]),
+                name=card_data["name"],
+                rarity=card_data.get("rarity", "E"),
+                anime=card_data.get("anime", ""),
+                power=card_data["power"],
+                health=card_data["health"],
+                max_health=card_data["max_health"],
+                attack=card_data["attack"],
+                defense=card_data["defense"],
+                level=card_data.get("level", 1),
+                image_url=card_data.get("image_url", ""),
+                position=card_data.get("position", 0)
+            )
+            enemy_cards_dict[card.id] = card
 
-        # Фильтруем живые карты
-        alive_players = [c for c in player_cards if c.get("health", 0) > 0]
-        alive_enemies = [c for c in enemy_cards if c.get("health", 0) > 0]
+        # Создаем объект битвы
+        battle = ArenaBattle(
+            list(player_cards_dict.values()),
+            list(enemy_cards_dict.values())
+        )
 
-        if not alive_players or not alive_enemies:
-            return {
-                "success": True,
-                "player_cards": player_cards,
-                "enemy_cards": enemy_cards,
-                "turn": current_turn,
-                "log": ["Битва уже завершена"],
-                "winner": "player" if not alive_enemies else "enemy" if not alive_players else None
-            }
+        # Устанавливаем текущий ход
+        battle.turn = battle_data.get("turn", 0)
 
-        # Каждая живая карта атакует
-        new_turn = current_turn + 1
-        turn_log = [f"⚔️ Ход {new_turn}"]
+        # Выполняем ход
+        actions = battle.next_turn()
 
-        # Атаки игрока
-        for player in alive_players:
-            if enemy_cards and alive_enemies:
-                # Выбираем случайного живого врага
-                target = random.choice([e for e in enemy_cards if e.get("health", 0) > 0])
+        # Логи для отправки
+        battle_log = []
+        for action in actions:
+            if action.damage > 0:
+                crit_text = " КРИТ!" if action.is_critical else ""
+                battle_log.append(
+                    f"⚔️ {action.attacker_name} атакует {action.defender_name} "
+                    f"на {action.damage}{crit_text}"
+                )
+                if action.is_dead:
+                    battle_log.append(f"💀 {action.defender_name} повержен!")
 
-                # Расчет урона
-                damage = max(1, player.get("attack", 10) - target.get("defense", 5))
-                crit = random.random() < 0.1  # 10% шанс крита
-                if crit:
-                    damage = int(damage * 1.5)
-
-                # Наносим урон
-                old_health = target["health"]
-                target["health"] = max(0, old_health - damage)
-
-                # Логируем
-                crit_text = " КРИТ!" if crit else ""
-                turn_log.append(f"  {player['name']} → {target['name']}: {damage} урона{crit_text}")
-
-                if target["health"] <= 0:
-                    turn_log.append(f"  💀 {target['name']} повержен!")
-
-        # Обновляем список живых врагов
-        alive_enemies = [c for c in enemy_cards if c.get("health", 0) > 0]
-
-        # Атаки врагов
-        for enemy in alive_enemies:
-            if player_cards and alive_players:
-                # Выбираем случайного живого игрока
-                target = random.choice([p for p in player_cards if p.get("health", 0) > 0])
-
-                # Расчет урона
-                damage = max(1, enemy.get("attack", 10) - target.get("defense", 5))
-
-                # Наносим урон
-                old_health = target["health"]
-                target["health"] = max(0, old_health - damage)
-
-                # Логируем
-                turn_log.append(f"  👹 {enemy['name']} → {target['name']}: {damage} урона")
-
-                if target["health"] <= 0:
-                    turn_log.append(f"  💀 {target['name']} повержен!")
-
-        # Проверяем победителя
-        alive_players = [p for p in player_cards if p.get("health", 0) > 0]
-        alive_enemies = [c for c in enemy_cards if c.get("health", 0) > 0]
-
-        winner = None
-        rewards = None
-
-        if not alive_enemies:
-            winner = "player"
-            rewards = {
-                "coins": 150,
-                "dust": 25,
-                "rating": 20
-            }
-            turn_log.append("🎉 ПОБЕДА!")
-        elif not alive_players:
-            winner = "enemy"
-            rewards = {
-                "coins": 50,
-                "dust": 10,
-                "rating": -5
-            }
-            turn_log.append("😔 Поражение...")
-
-        # Сохраняем обновленное состояние
-        battle_data["player_cards"] = player_cards
-        battle_data["enemy_cards"] = enemy_cards
-        battle_data["turn"] = new_turn
-        if winner:
-            battle_data["winner"] = winner
+        # Обновляем сохраненные данные
+        battle_data["player_cards"] = [
+            card.to_dict() for card in player_cards_dict.values()
+        ]
+        battle_data["enemy_cards"] = [
+            card.to_dict() for card in enemy_cards_dict.values()
+        ]
+        battle_data["turn"] = battle.turn
+        battle_data["winner"] = battle.winner
 
         await battle_storage.save_battle(request.battle_id, battle_data)
 
         return {
             "success": True,
-            "player_cards": player_cards,
-            "enemy_cards": enemy_cards,
-            "turn": new_turn,
-            "log": turn_log,
-            "winner": winner,
-            "rewards": rewards
+            "turn": battle.turn,
+            "player_cards": battle_data["player_cards"],
+            "enemy_cards": battle_data["enemy_cards"],
+            "log": battle_log,
+            "winner": battle.winner
         }
 
     except Exception as e:
         logger.exception(f"Error in battle_turn: {e}")
-        return {
-            "success": False, 
-            "error": str(e),
-            "player_cards": [],
-            "enemy_cards": []
-        }
+        return {"success": False, "error": str(e)}
 
 async def create_test_battle(battle_id: str):
     """Создает тестовую битву для разработки"""

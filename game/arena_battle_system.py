@@ -1,13 +1,14 @@
+# game/arena_battle_system.py
 import random
-from typing import List, Dict, Tuple, Optional
-from dataclasses import dataclass
-from datetime import datetime
+import math
+from typing import List, Dict, Optional, Tuple
+from dataclasses import dataclass, asdict
 
 @dataclass
 class BattleCard:
     """Карта в бою"""
     id: int
-    user_card_id: int  # ID из user_cards
+    user_card_id: int
     name: str
     rarity: str
     anime: str
@@ -17,43 +18,62 @@ class BattleCard:
     attack: int
     defense: int
     level: int
-    image_url: str
-    position: int
+    image_url: Optional[str] = None
+    position: int = 0
+
+    def take_damage(self, damage: int) -> int:
+        """Получить урон, возвращает фактический урон"""
+        actual_damage = min(damage, self.health)
+        self.health -= actual_damage
+        return actual_damage
+
+    def is_alive(self) -> bool:
+        return self.health > 0
+
+    def to_dict(self) -> dict:
+        """Конвертация в словарь для API"""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "rarity": self.rarity,
+            "power": self.power,
+            "health": max(0, self.health),
+            "max_health": self.max_health,
+            "attack": self.attack,
+            "defense": self.defense,
+            "level": self.level,
+            "image_url": self.image_url,
+            "position": self.position
+        }
 
 @dataclass
 class BattleAction:
     """Действие в бою"""
-    turn: int
     attacker_id: int
     attacker_name: str
     defender_id: int
     defender_name: str
     damage: int
-    defender_health_before: int
-    defender_health_after: int
-    is_critical: bool
-    is_dodged: bool
+    is_critical: bool = False
+    is_dodged: bool = False
+    is_dead: bool = False
 
 class ArenaBattle:
-    """Класс для управления боем"""
+    """Система боя на арене"""
 
-    def __init__(self, user_cards: List[BattleCard], opponent_cards: List[BattleCard]):
-        self.user_cards = user_cards
-        self.opponent_cards = opponent_cards
+    def __init__(self, player_cards: List[BattleCard], enemy_cards: List[BattleCard]):
+        self.player_cards = {c.id: c for c in player_cards}
+        self.enemy_cards = {c.id: c for c in enemy_cards}
         self.turn = 0
         self.actions: List[BattleAction] = []
-        self.winner = None
+        self.winner: Optional[str] = None  # 'player', 'enemy', или None
 
-        # Анализируем синергии для бонусов
-        self.user_synergies = self._analyze_synergies(user_cards)
-        self.opponent_synergies = self._analyze_synergies(opponent_cards)
+        # Проверяем синергии в колоде
+        self.player_synergies = self._check_synergies(list(self.player_cards.values()))
+        self.enemy_synergies = self._check_synergies(list(self.enemy_cards.values()))
 
-        # Применяем бонусы синергии
-        self._apply_synergies(self.user_cards, self.user_synergies)
-        self._apply_synergies(self.opponent_cards, self.opponent_synergies)
-
-    def _analyze_synergies(self, cards: List[BattleCard]) -> Dict[str, int]:
-        """Анализирует синергии по аниме"""
+    def _check_synergies(self, cards: List[BattleCard]) -> Dict[str, int]:
+        """Проверяет синергии в колоде (карты из одного аниме)"""
         anime_counts = {}
         for card in cards:
             if card.anime:
@@ -61,144 +81,136 @@ class ArenaBattle:
 
         synergies = {}
         for anime, count in anime_counts.items():
-            if count >= 2:
-                synergies[anime] = count
+            if count >= 3:
+                synergies[anime] = 15  # +15% к статам
+            elif count >= 2:
+                synergies[anime] = 10  # +10% к статам
+
         return synergies
 
-    def _apply_synergies(self, cards: List[BattleCard], synergies: Dict):
-        """Применяет бонусы синергии к картам"""
-        for card in cards:
-            if card.anime in synergies:
-                count = synergies[card.anime]
-                # Бонус: +5% за каждую карту из того же аниме (макс +25%)
-                bonus = 1.0 + (count - 1) * 0.05
-                card.attack = int(card.attack * bonus)
-                card.defense = int(card.defense * bonus)
+    def _calculate_damage(self, attacker: BattleCard, defender: BattleCard) -> Tuple[int, bool]:
+        """Расчет урона с учетом критов"""
+        # Базовая атака минус защита
+        base_damage = max(1, attacker.attack - defender.defense // 2)
 
-    def calculate_damage(self, attacker: BattleCard, defender: BattleCard) -> Tuple[int, bool, bool]:
-        """Рассчитывает урон"""
-        # Базовая атака минус половина защиты
-        damage = max(1, attacker.attack - defender.defense // 2)
-
-        # Шанс критического удара (10% базовый)
+        # Шанс крита (10%)
         is_critical = random.random() < 0.1
         if is_critical:
-            damage = int(damage * 1.5)
+            base_damage = int(base_damage * 1.5)
 
-        # Шанс уклонения (5% базовый)
-        is_dodged = random.random() < 0.05
-        if is_dodged:
-            damage = 0
+        # Рандомный разброс ±20%
+        damage = int(base_damage * random.uniform(0.8, 1.2))
 
-        return damage, is_critical, is_dodged
+        return max(1, damage), is_critical
+
+    def _get_alive_cards(self, is_player: bool) -> List[BattleCard]:
+        """Получить живые карты стороны"""
+        cards_dict = self.player_cards if is_player else self.enemy_cards
+        return [c for c in cards_dict.values() if c.is_alive()]
 
     def next_turn(self) -> List[BattleAction]:
-        """Выполняет следующий ход боя"""
+        """Выполнить следующий ход"""
+        if self.winner:
+            return []
+
         self.turn += 1
         turn_actions = []
 
-        # Живые карты с обеих сторон
-        user_alive = [c for c in self.user_cards if c.health > 0]
-        opponent_alive = [c for c in self.opponent_cards if c.health > 0]
+        # Получаем живые карты
+        alive_players = self._get_alive_cards(True)
+        alive_enemies = self._get_alive_cards(False)
 
-        if not user_alive or not opponent_alive:
-            return turn_actions
+        # Если кто-то остался без карт - битва окончена
+        if not alive_players:
+            self.winner = 'enemy'
+            return []
+        if not alive_enemies:
+            self.winner = 'player'
+            return []
 
-        # Все живые карты атакуют в случайном порядке
-        all_fighters = user_alive + opponent_alive
-        random.shuffle(all_fighters)
+        # Копируем списки для безопасной модификации
+        players_to_attack = alive_players.copy()
+        enemies_to_attack = alive_enemies.copy()
 
-        for attacker in all_fighters:
-            if attacker.health <= 0:
-                continue
+        # Все живые карты игрока атакуют случайных врагов
+        for player in players_to_attack:
+            # Проверяем что есть живые враги
+            current_alive_enemies = [c for c in enemies_to_attack if c.is_alive()]
+            if not current_alive_enemies:
+                break
 
-            # Выбираем случайную цель из противоположной команды
-            if attacker in user_alive:
-                possible_targets = [c for c in opponent_alive if c.health > 0]
-            else:
-                possible_targets = [c for c in user_alive if c.health > 0]
+            target = random.choice(current_alive_enemies)
+            damage, is_critical = self._calculate_damage(player, target)
 
-            if not possible_targets:
-                continue
+            actual_damage = target.take_damage(damage)
 
-            target = random.choice(possible_targets)
-
-            # Рассчитываем урон
-            damage, is_critical, is_dodged = self.calculate_damage(attacker, target)
-
-            health_before = target.health
-            if not is_dodged:
-                target.health = max(0, target.health - damage)
-            health_after = target.health
-
-            # Записываем действие
             action = BattleAction(
-                turn=self.turn,
-                attacker_id=attacker.user_card_id,
-                attacker_name=attacker.name,
-                defender_id=target.user_card_id,
+                attacker_id=player.id,
+                attacker_name=player.name,
+                defender_id=target.id,
                 defender_name=target.name,
-                damage=damage if not is_dodged else 0,
-                defender_health_before=health_before,
-                defender_health_after=health_after,
+                damage=actual_damage,
                 is_critical=is_critical,
-                is_dodged=is_dodged
+                is_dead=not target.is_alive()
             )
-
             turn_actions.append(action)
 
+        # Обновляем список живых врагов после атак игрока
+        alive_enemies = self._get_alive_cards(False)
+        enemies_to_attack = alive_enemies.copy()
+
+        # Все живые карты врага атакуют случайных игроков
+        for enemy in enemies_to_attack:
+            # Проверяем что есть живые игроки
+            current_alive_players = [c for c in players_to_attack if c.is_alive()]
+            if not current_alive_players:
+                break
+
+            target = random.choice(current_alive_players)
+            damage, is_critical = self._calculate_damage(enemy, target)
+
+            actual_damage = target.take_damage(damage)
+
+            action = BattleAction(
+                attacker_id=enemy.id,
+                attacker_name=enemy.name,
+                defender_id=target.id,
+                defender_name=target.name,
+                damage=actual_damage,
+                is_critical=is_critical,
+                is_dead=not target.is_alive()
+            )
+            turn_actions.append(action)
+
+        # Проверяем победителя после хода
+        alive_players = self._get_alive_cards(True)
+        alive_enemies = self._get_alive_cards(False)
+
+        if not alive_players:
+            self.winner = 'enemy'
+        elif not alive_enemies:
+            self.winner = 'player'
+
         self.actions.extend(turn_actions)
-
-        # Проверяем победителя
-        user_alive = [c for c in self.user_cards if c.health > 0]
-        opponent_alive = [c for c in self.opponent_cards if c.health > 0]
-
-        if not user_alive:
-            self.winner = "opponent"
-        elif not opponent_alive:
-            self.winner = "user"
-
         return turn_actions
 
-    def get_battle_state(self) -> Dict:
-        """Возвращает текущее состояние боя"""
+    def get_battle_state(self) -> dict:
+        """Получить текущее состояние боя"""
         return {
             "turn": self.turn,
             "winner": self.winner,
-            "user_cards": [
-                {
-                    "id": c.user_card_id,
-                    "name": c.name,
-                    "health": c.health,
-                    "max_health": c.max_health,
-                    "attack": c.attack,
-                    "defense": c.defense,
-                    "image_url": c.image_url,
-                    "position": c.position,
-                    "is_alive": c.health > 0,
-                    "rarity": c.rarity,
-                    "level": c.level
-                }
-                for c in self.user_cards
-            ],
-            "opponent_cards": [
-                {
-                    "id": c.user_card_id,
-                    "name": c.name,
-                    "health": c.health,
-                    "max_health": c.max_health,
-                    "attack": c.attack,
-                    "defense": c.defense,
-                    "image_url": c.image_url,
-                    "position": c.position,
-                    "is_alive": c.health > 0,
-                    "rarity": c.rarity,
-                    "level": c.level
-                }
-                for c in self.opponent_cards
-            ],
-            "synergies": {
-                "user": self.user_synergies,
-                "opponent": self.opponent_synergies
-            }
+            "player_cards": [c.to_dict() for c in self.player_cards.values()],
+            "enemy_cards": [c.to_dict() for c in self.enemy_cards.values()],
+            "player_synergies": self.player_synergies,
+            "enemy_synergies": self.enemy_synergies,
+            "actions": [asdict(a) for a in self.actions[-10:]]  # Последние 10 действий
         }
+
+    def auto_battle(self) -> List[BattleAction]:
+        """Автоматический бой до конца"""
+        all_actions = []
+        while not self.winner:
+            turn_actions = self.next_turn()
+            all_actions.extend(turn_actions)
+        return all_actions
+        

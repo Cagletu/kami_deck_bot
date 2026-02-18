@@ -156,14 +156,15 @@ async def cmd_arena(message: types.Message):
 
         # Создаем бой
         battle = ArenaBattle(user_battle_cards, opponent_battle_cards)
-
-        # Сохраняем в Redis
+        
+        # Сохраняем в Redis с полными данными карт
         await battle_storage.save_battle(battle_id, {
             "user_id": message.from_user.id,
             "opponent_id": opponent_id,
-            "user_deck": [(uc.id, c.id) for uc, c in user_deck],
-            "opponent_deck": [(uc.id, c.id) for uc, c in opponent_deck] if opponent_id else [],
-            "state": battle.get_battle_state(),
+            "player_cards": [card.to_dict() for card in user_battle_cards],
+            "enemy_cards": [card.to_dict() for card in opponent_battle_cards],
+            "turn": 0,
+            "winner": None,
             "created_at": datetime.now().isoformat()
         })
 
