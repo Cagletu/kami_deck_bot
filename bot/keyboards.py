@@ -36,7 +36,7 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🏕️ Экспедиции", callback_data="expedition"),
     )
     builder.row(
-        InlineKeyboardButton(text="⚔️ Арена", callback_data="arena_battle"),
+        InlineKeyboardButton(text="⚔️ Арена", callback_data="open_arena"),
     )
     return builder.as_markup()
     

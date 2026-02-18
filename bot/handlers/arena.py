@@ -182,7 +182,7 @@ async def cmd_arena(message: types.Message):
 <b>⚔️ АРЕНА ЖДЕТ!</b>
 
 📊 <b>Ваша колода:</b> 5/5 карт
-{'⭐ Есть синергия!' if battle.user_synergies else '🔄 Без синергии'}
+{'⭐ Есть синергия!' if battle.player_synergies else '🔄 Без синергии'}
 
 👹 <b>Противник:</b> {'Реальный игрок' if opponent_id else 'Тестовая колода'}
 
@@ -194,6 +194,13 @@ async def cmd_arena(message: types.Message):
     except Exception as e:
         logger.exception(f"Ошибка cmd_arena: {e}")
         await message.answer("❌ Произошла ошибка. Попробуйте позже.")
+
+
+@router.callback_query(F.data == "open_arena")
+async def open_arena(callback: types.CallbackQuery):
+    await cmd_arena(callback.message)
+    await callback.answer()
+    
 
 @router.message(F.web_app_data)
 async def handle_webapp_data(message: types.Message):
