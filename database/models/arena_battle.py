@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, ForeignKey, DateTime, String
+from sqlalchemy import Column, Integer, ForeignKey, DateTime, String, BigInteger
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from database.base import Base
@@ -11,8 +11,8 @@ class ArenaBattle(Base):
     id = Column(Integer, primary_key=True)
 
     # Игроки
-    attacker_id = Column(Integer, ForeignKey("users.id"))
-    defender_id = Column(Integer, ForeignKey("users.id"))
+    attacker_id = Column(BigInteger, ForeignKey("users.id"))
+    defender_id = Column(BigInteger, ForeignKey("users.id"))
 
     # Колоды игроков (ID из user_cards)
     attacker_deck = Column(JSONB)  # [1, 2, 3, 4, 5]
