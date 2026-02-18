@@ -14,6 +14,9 @@ from database.models.expedition import Expedition, ExpeditionType, ExpeditionSta
 from database.models.daily_task import DailyTask, TaskType
 from database.base import AsyncSessionLocal
 from game.pack_system import PACK_SETTINGS
+import logging
+
+logger = logging.getLogger(__name__)
 
 # ===== ПОЛЬЗОВАТЕЛИ =====
 
@@ -44,6 +47,7 @@ async def get_user_or_create(
             dust=0,
             level=1
         )
+        logger.info(f"Created new user: tg_id={telegram_id}")
 
         session.add(new_user)
         await session.flush()

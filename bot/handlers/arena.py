@@ -127,6 +127,8 @@ def prepare_battle_cards(cards_data: list, is_user: bool = True) -> list:
 @router.message(Command("arena"))
 async def cmd_arena(message: types.Message):
     """Вход на арену"""
+    if message.from_user.is_bot:
+        return
     try:
         async with AsyncSessionLocal() as session:
             user = await get_user_or_create(session, message.from_user.id)

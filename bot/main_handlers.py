@@ -139,6 +139,8 @@ ID: <code>{user.id}</code>
 # ===== COLLECTION =====
 @router.message(Command("collection"))
 async def cmd_collection(message: types.Message):
+    if message.from_user.is_bot:
+        return
     try:
         async with AsyncSessionLocal() as session:
             user = await get_user_or_create(session, message.from_user.id)
@@ -170,6 +172,8 @@ async def cmd_collection(message: types.Message):
 
 @router.message(Command("open_pack"))
 async def cmd_open_pack(message: types.Message):
+    if message.from_user.is_bot:
+        return
     try:
         async with AsyncSessionLocal() as session:
             user = await get_user_or_create(
@@ -273,6 +277,8 @@ async def cmd_open_pack(message: types.Message):
 # ===== DAILY =====
 @router.message(Command("daily"))
 async def cmd_daily(message: types.Message):
+    if message.from_user.is_bot:
+        return
     try:
         async with AsyncSessionLocal() as session:
             user = await get_user_or_create(session, message.from_user.id)
@@ -318,6 +324,8 @@ async def cmd_daily(message: types.Message):
 # ===== HELP =====
 @router.message(Command("help"))
 async def cmd_help(message: types.Message):
+    if message.from_user.is_bot:
+        return
     try:
         help_text = """
 <b>❓ ПОМОЩЬ ПО ANIME CARDS GAME</b>
@@ -385,6 +393,10 @@ async def cancel_any(message: types.Message, state: FSMContext):
 # Callback для редкости и возврата
 @router.callback_query(F.data == "collection_by_rarity")
 async def collection_by_rarity(callback: types.CallbackQuery):
+    
+    if callback.from_user.is_bot:
+        return
+
     try:
         await callback.message.edit_text(
             "<b>Выберите редкость для просмотра:</b>",
@@ -397,6 +409,10 @@ async def collection_by_rarity(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("rarity_"))
 async def show_rarity_collection(callback: types.CallbackQuery):
+
+    if callback.from_user.is_bot:
+        return
+        
     """Показать коллекцию карт по редкости"""
     try:
         # Парсим callback_data: rarity_SSS_1 или rarity_SSS
@@ -503,6 +519,10 @@ async def show_rarity_collection(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "back_to_collection")
 async def back_to_collection(callback: types.CallbackQuery):
+
+    if callback.from_user.is_bot:
+        return
+        
     try:
         await cmd_collection(callback.message)
         await callback.answer()
@@ -513,6 +533,10 @@ async def back_to_collection(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "open_pack")
 async def cb_open_pack(callback: types.CallbackQuery):
+
+    if callback.from_user.is_bot:
+        return
+        
     try:
         async with AsyncSessionLocal() as session:
             user = await get_user_or_create(
@@ -617,6 +641,10 @@ async def cb_open_pack(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("col_page:"))
 async def cb_collection_page(callback: CallbackQuery):
+
+    if callback.from_user.is_bot:
+        return
+        
     try:
         data_parts = callback.data.split(":")
         page = int(data_parts[1])
@@ -656,6 +684,10 @@ async def cb_collection_page(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("favorite_"))
 async def toggle_favorite_handler(callback: types.CallbackQuery):
+
+    if callback.from_user.is_bot:
+        return
+        
     """Добавить/убрать из избранного"""
     try:
         card_id = int(callback.data.replace("favorite_", ""))
@@ -689,6 +721,10 @@ async def toggle_favorite_handler(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("deck_"))
 async def toggle_deck_handler(callback: types.CallbackQuery):
+
+    if callback.from_user.is_bot:
+        return
+        
     """Добавить/убрать из колоды"""
     try:
         card_id = int(callback.data.replace("deck_", ""))
@@ -735,6 +771,10 @@ async def toggle_deck_handler(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("upgrade_"))
 async def upgrade_card(callback: types.CallbackQuery):
+
+    if callback.from_user.is_bot:
+        return
+        
     """Улучшить карту"""
     try:
         card_id = int(callback.data.replace("upgrade_", ""))
@@ -845,6 +885,10 @@ async def upgrade_card(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "profile")
 async def callback_profile(callback: types.CallbackQuery):
+
+    if callback.from_user.is_bot:
+        return
+        
     try:
         async with AsyncSessionLocal() as session:
             user = await get_user_or_create(session, callback.from_user.id)
@@ -898,6 +942,10 @@ ID: <code>{user.id}</code>
 
 @router.callback_query(F.data.startswith("5x_upgrade_"))
 async def upgrade_card_5x(callback: types.CallbackQuery):
+
+    if callback.from_user.is_bot:
+        return
+        
     """Улучшить карту 5 раз"""
     try:
         card_id = int(callback.data.replace("5x_upgrade_", ""))
@@ -1004,6 +1052,10 @@ async def upgrade_card_5x(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "collection_by_anime")
 async def collection_by_anime(callback: types.CallbackQuery):
+
+    if callback.from_user.is_bot:
+        return
+        
     """Показать коллекцию, сгруппированную по аниме"""
     try:
         async with AsyncSessionLocal() as session:
@@ -1049,6 +1101,10 @@ async def collection_by_anime(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "collection_favorites")
 async def collection_favorites(callback: types.CallbackQuery):
+
+    if callback.from_user.is_bot:
+        return
+        
     """Показать избранные карты"""
     try:
         async with AsyncSessionLocal() as session:
@@ -1107,6 +1163,10 @@ async def collection_favorites(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "collection_in_deck")
 async def collection_in_deck(callback: types.CallbackQuery):
+
+    if callback.from_user.is_bot:
+        return
+        
     """Показать карты в колоде"""
     try:
         async with AsyncSessionLocal() as session:
@@ -1156,6 +1216,10 @@ async def collection_in_deck(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "collection_stats")
 async def collection_stats(callback: types.CallbackQuery):
+
+    if callback.from_user.is_bot:
+        return
+        
     """Показать расширенную статистику коллекции"""
     try:
         async with AsyncSessionLocal() as session:
@@ -1239,6 +1303,10 @@ async def collection_stats(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "collection_strongest")
 async def collection_strongest(callback: types.CallbackQuery):
+
+    if callback.from_user.is_bot:
+        return
+        
     """Показать самые сильные карты"""
     try:
         async with AsyncSessionLocal() as session:
@@ -1299,6 +1367,10 @@ async def collection_strongest(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("view_card_"))
 async def view_card_detail(callback: types.CallbackQuery):
+
+    if callback.from_user.is_bot:
+        return
+        
     """Просмотр детальной информации о карте с изображением"""
     try:
         # Проверяем что это точно view_card_, а не что-то другое
@@ -1400,6 +1472,10 @@ async def view_card_detail(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "back_to_main", StateFilter("*"))
 async def cb_back_main(callback: CallbackQuery):
+
+    if callback.from_user.is_bot:
+        return
+        
     try:
         await callback.message.edit_text("🏠 Главное меню",
                                          reply_markup=main_menu_keyboard())
