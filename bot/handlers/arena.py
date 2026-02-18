@@ -125,17 +125,22 @@ def prepare_battle_cards(cards_data: list, is_user: bool = True) -> list:
     return battle_cards
 
 @router.message(Command("arena"))
-async def cmd_arena(message: types.Message):
+async def cmd_arena(message: types.Message, user_id: int = None):
     """Вход на арену"""
-    if message.from_user.is_bot:
-        return
+    # Определяем какой ID использовать
+    if user_id:
+        tg_id = user_id
+    else:
+        tg_id = message.from_user.id
+        
     try:
         async with AsyncSessionLocal() as session:
-            user = await get_user_or_create(session, message.from_user.id)
+            user = await get_user_or_create(session, tg_id)
+            
+        logger.info(f"Arena user: tg_id={tg_id}, db_id={user.id}")
+            
         # Получаем колоду пользователя
         user_deck = await get_user_deck(user.id)
-
-        logger.info(f"Arena user: tg_id={message.from_user.id}, db_id={user.id}")
 
         if len(user_deck) < 5:
             await message.answer(
@@ -202,7 +207,7 @@ async def cmd_arena(message: types.Message):
 
 @router.callback_query(F.data == "open_arena")
 async def open_arena(callback: types.CallbackQuery):
-    await cmd_arena(callback.message)
+    await cmd_arena(callback.message, callback.from_user.id)
     await callback.answer()
     
 

@@ -34,6 +34,7 @@ class BattleCard:
         """Конвертация в словарь для API"""
         return {
             "id": self.id,
+            "user_card_id": self.user_card_id,
             "name": self.name,
             "rarity": self.rarity,
             "power": self.power,
