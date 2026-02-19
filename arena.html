@@ -91,7 +91,7 @@
         .card-stats {
             display: flex;
             gap: 10px;
-            font-size: 12px;
+            font-size: 10px;
             color: rgba(255,255,255,0.7);
         }
         
@@ -103,10 +103,10 @@
         
         .button {
             flex: 1;
-            padding: 15px;
+            padding: 10px;
             border: none;
             border-radius: 10px;
-            font-size: 16px;
+            font-size: 10px;
             font-weight: bold;
             cursor: pointer;
             transition: all 0.3s;
@@ -137,7 +137,7 @@
             border-radius: 10px;
             padding: 15px;
             margin-top: 20px;
-            max-height: 200px;
+            max-height: 150px;
             overflow-y: auto;
         }
         
@@ -192,7 +192,7 @@
 
         .card-image {
             width: 100%;
-            height: 80px;
+            height: 70px;
             object-fit: cover;
             border-radius: 8px;
             margin-bottom: 8px;
@@ -235,6 +235,7 @@
         
         <div class="controls" id="battle-controls" style="display: none;">
             <button class="button auto" onclick="nextTurn()" id="nextTurnBtn">⚡ СЛЕДУЮЩИЙ ХОД</button>
+            <button class="button auto" onclick="autoBattle()" id="autoBattleBtn" style="background: linear-gradient(135deg, #9b59b6, #8e44ad);">🤖 АВТОБОЙ</button>
             <button class="button close" onclick="closeArena()">🏠 ЗАКРЫТЬ</button>
         </div>
         
@@ -338,10 +339,11 @@
                 const healthPercent = (card.health / card.max_health) * 100;
                 
                 const cardEl = document.createElement('div');
+                cardEl.setAttribute('data-card-id', card.id);
                 cardEl.className = 'card-slot';
                 cardEl.onclick = () => selectCard(card.id);
                 cardEl.innerHTML = `
-                ${card.image_url ? `<img src="${card.image_url}" style="width: 100%; height: 60px; object-fit: cover; border-radius: 5px; margin-bottom: 5px;">` : ''}
+                ${card.image_url ? `<img src="${card.image_url}" style="width: 100%; height: 70px; object-fit: cover; border-radius: 5px; margin-bottom: 5px;">` : ''}
                 <div class="card-name">${card.name}</div>
                 <div class="card-stats">
                     <span>💪 ${card.power}</span>
@@ -370,9 +372,10 @@
                 const healthPercent = (card.health / card.max_health) * 100;
                 
                 const cardEl = document.createElement('div');
+                cardEl.setAttribute('data-card-id', card.id);
                 cardEl.className = 'enemy-card';
                 cardEl.innerHTML = `
-                    ${card.image_url ? `<img src="${card.image_url}" style="width: 100%; height: 60px; object-fit: cover; border-radius: 5px; margin-bottom: 5px;">` : ''}
+                    ${card.image_url ? `<img src="${card.image_url}" style="width: 100%; height: 70px; object-fit: cover; border-radius: 5px; margin-bottom: 5px;">` : ''}
                     <div class="card-name">${card.name}</div>
                     <div class="card-stats">
                         <span>💪 ${card.power}</span>
@@ -415,8 +418,8 @@
             btn.disabled = true;
             btn.textContent = '⚡ БОЙ ИДЕТ...';
 
-            let data = null; // 👈 ВАЖНО: объявляем заранее
-            
+            let data = null;
+
             try {
                 const response = await fetch('/api/battle/turn', {
                     method: 'POST',
@@ -427,43 +430,80 @@
                         battle_id: battleId
                     })
                 });
-                
-                const data = await response.json();
-                
+
+                data = await response.json();
+
                 if (data.success) {
+                    // Анимируем каждый удар
+                    if (data.log && data.log.length > 0) {
+                        // Получаем действия из лога (нужно добавить в API)
+                        for (const action of data.actions || []) {
+                            await animateAttack(
+                                action.attacker_id,
+                                action.defender_id,
+                                action.damage,
+                                action.is_critical
+                            );
+                        }
+                    }
+
                     // Обновляем состояние карт
                     data.player_cards.forEach(card => {
                         if (playerCards[card.id]) {
                             playerCards[card.id] = card;
                         }
                     });
-                    
+
                     data.enemy_cards.forEach(card => {
                         if (enemyCards[card.id]) {
                             enemyCards[card.id] = card;
                         }
                     });
-                    
+
                     currentTurn = data.turn;
-                    
+                    document.getElementById('turn').textContent = currentTurn;
+
                     // Добавляем логи
                     if (data.log && data.log.length > 0) {
                         data.log.forEach(log => addLog(log));
                     }
-                    
+
                     // Проверяем победителя
                     if (data.winner) {
                         if (data.winner === 'player') {
                             addLog('🎉 ПОБЕДА!');
-                            tg?.sendData(JSON.stringify({ action: 'battle_result', result: 'win' }));
+                            // Добавляем награды
+                            if (data.rewards) {
+                                addLog(`💰 Награды: ${data.rewards.coins} монет, ${data.rewards.dust} пыли`);
+                            }
+                            tg?.sendData(JSON.stringify({ 
+                                action: 'battle_result', 
+                                result: 'win',
+                                rewards: data.rewards 
+                            }));
                         } else if (data.winner === 'enemy') {
                             addLog('😔 Поражение...');
-                            tg?.sendData(JSON.stringify({ action: 'battle_result', result: 'lose' }));
+                            tg?.sendData(JSON.stringify({ 
+                                action: 'battle_result', 
+                                result: 'lose' 
+                            }));
                         }
-                        
+
                         // Блокируем кнопку после окончания
                         btn.disabled = true;
                         btn.textContent = '⚡ БОЙ ОКОНЧЕН';
+
+                        // Добавляем кнопку реванша
+                        const controls = document.getElementById('battle-controls');
+                        const rematchBtn = document.createElement('button');
+                        rematchBtn.className = 'button';
+                        rematchBtn.style.background = 'linear-gradient(135deg, #4ecdc4, #45b7d1)';
+                        rematchBtn.textContent = '🔄 РЕВАНШ';
+                        rematchBtn.onclick = () => {
+                            tg?.sendData(JSON.stringify({ action: 'rematch' }));
+                            setTimeout(() => closeArena(), 500);
+                        };
+                        controls.appendChild(rematchBtn);
                     } else {
                         renderBattle();
                     }
@@ -480,12 +520,163 @@
                 }
             }
         }
-        
-        function showError(message) {
-            document.getElementById('loading').style.display = 'none';
-            const errorEl = document.getElementById('error');
-            errorEl.style.display = 'block';
-            errorEl.textContent = '❌ ' + message;
+
+        async function autoBattle() {
+            const btn = document.getElementById('nextTurnBtn');
+            let data = null;
+
+            // Пока бой не закончен и есть живые карты
+            while (true) {
+                // Проверяем есть ли живые карты
+                const alivePlayers = Object.values(playerCards).filter(c => c.is_alive !== false);
+                const aliveEnemies = Object.values(enemyCards).filter(c => c.is_alive !== false);
+
+                if (alivePlayers.length === 0 || aliveEnemies.length === 0) {
+                    break;
+                }
+
+                btn.disabled = true;
+                btn.textContent = '⚡ АВТОБОЙ...';
+
+                try {
+                    const response = await fetch('/api/battle/turn', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            battle_id: battleId
+                        })
+                    });
+
+                    data = await response.json();
+
+                    if (data.success) {
+                        // Обновляем состояние карт
+                        data.player_cards.forEach(card => {
+                            if (playerCards[card.id]) {
+                                playerCards[card.id] = card;
+                            }
+                        });
+
+                        data.enemy_cards.forEach(card => {
+                            if (enemyCards[card.id]) {
+                                enemyCards[card.id] = card;
+                            }
+                        });
+
+                        currentTurn = data.turn;
+                        document.getElementById('turn').textContent = currentTurn;
+
+                        // Добавляем логи с задержкой для анимации
+                        if (data.log && data.log.length > 0) {
+                            for (const log of data.log) {
+                                addLog(log);
+                                renderBattle();
+                                await new Promise(resolve => setTimeout(resolve, 300));
+                            }
+                        }
+
+                        // Проверяем победителя
+                        if (data.winner) {
+                            if (data.winner === 'player') {
+                                addLog('🎉 ПОБЕДА!');
+                                tg?.sendData(JSON.stringify({ action: 'battle_result', result: 'win' }));
+                            } else if (data.winner === 'enemy') {
+                                addLog('😔 Поражение...');
+                                tg?.sendData(JSON.stringify({ action: 'battle_result', result: 'lose' }));
+                            }
+                            break;
+                        }
+
+                        renderBattle();
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    } else {
+                        addLog('❌ ' + (data.error || 'Ошибка сервера'));
+                        break;
+                    }
+                } catch (error) {
+                    console.error('Ошибка:', error);
+                    addLog('❌ Ошибка соединения');
+                    break;
+                }
+            }
+
+            btn.disabled = false;
+            btn.textContent = '⚡ СЛЕДУЮЩИЙ ХОД';
+
+            // Финальный рендер
+            renderBattle();
+        }
+
+        // В arena.html добавьте функцию для анимации удара
+
+        async function animateAttack(attackerId, defenderId, damage, isCritical) {
+            const attackerEl = document.querySelector(`[data-card-id="${attackerId}"]`);
+            const defenderEl = document.querySelector(`[data-card-id="${defenderId}"]`);
+
+            if (attackerEl) {
+                attackerEl.style.transform = 'scale(1.1)';
+                attackerEl.style.transition = 'transform 0.1s';
+                await new Promise(resolve => setTimeout(resolve, 50));
+                attackerEl.style.transform = 'scale(1)';
+            }
+
+            if (defenderEl) {
+                defenderEl.style.backgroundColor = isCritical ? '#ff6b6b' : '#ff8e8e';
+                defenderEl.style.transition = 'background-color 0.1s';
+                await new Promise(resolve => setTimeout(resolve, 50));
+                defenderEl.style.backgroundColor = '';
+            }
+
+            // Показываем урон
+            const damageEl = document.createElement('div');
+            damageEl.style.position = 'absolute';
+            damageEl.style.color = isCritical ? '#ff6b6b' : '#ffffff';
+            damageEl.style.fontSize = '24px';
+            damageEl.style.fontWeight = 'bold';
+            damageEl.style.zIndex = '1000';
+            damageEl.style.textShadow = '2px 2px 4px black';
+            damageEl.textContent = `-${damage}${isCritical ? '!' : ''}`;
+
+            const rect = defenderEl?.getBoundingClientRect();
+            if (rect) {
+                damageEl.style.left = rect.left + rect.width/2 + 'px';
+                damageEl.style.top = rect.top + 'px';
+                document.body.appendChild(damageEl);
+
+                // Анимация урона
+                let opacity = 1;
+                for (let i = 0; i < 10; i++) {
+                    damageEl.style.opacity = opacity;
+                    damageEl.style.top = (rect.top - i*5) + 'px';
+                    opacity -= 0.1;
+                    await new Promise(resolve => setTimeout(resolve, 20));
+                }
+                damageEl.remove();
+            }
+        }
+
+        // Функция для отображения наград
+        function showRewards(rewards) {
+            if (!rewards) return;
+
+            const logContainer = document.getElementById('battle-log');
+            const rewardsEl = document.createElement('div');
+            rewardsEl.className = 'log-entry';
+            rewardsEl.style.background = 'linear-gradient(135deg, #f1c40f, #f39c12)';
+            rewardsEl.style.color = 'black';
+            rewardsEl.style.fontWeight = 'bold';
+            rewardsEl.style.marginTop = '10px';
+            rewardsEl.style.padding = '10px';
+            rewardsEl.style.borderRadius = '5px';
+            rewardsEl.innerHTML = `
+                🎁 НАГРАДЫ:<br>
+                💰 ${rewards.coins} монет<br>
+                ✨ ${rewards.dust} пыли<br>
+                📈 ${rewards.rating} рейтинга
+            `;
+            logContainer.appendChild(rewardsEl);
         }
         
         function closeArena() {
@@ -495,6 +686,13 @@
                 // Если не в Telegram, просто показываем сообщение
                 alert('Закройте вкладку браузера');
             }
+        }
+        
+        function showError(message) {
+            document.getElementById('loading').style.display = 'none';
+            const errorEl = document.getElementById('error');
+            errorEl.style.display = 'block';
+            errorEl.textContent = '❌ ' + message;
         }
         
         // Загружаем данные при старте

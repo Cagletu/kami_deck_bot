@@ -332,13 +332,36 @@ async def battle_turn(request: TurnRequest):
 
         await battle_storage.save_battle(request.battle_id, battle_data)
 
+        # Собираем actions для анимации
+        actions_data = []
+        for action in actions:
+            actions_data.append({
+                "attacker_id": action.attacker_id,
+                "attacker_name": action.attacker_name,
+                "defender_id": action.defender_id,
+                "defender_name": action.defender_name,
+                "damage": action.damage,
+                "is_critical": action.is_critical,
+                "is_dead": action.is_dead
+            })
+
         return {
             "success": True,
             "turn": battle.turn,
             "player_cards": battle_data["player_cards"],
             "enemy_cards": battle_data["enemy_cards"],
             "log": battle_log,
-            "winner": battle.winner
+            "actions": actions_data,  # Добавляем для анимации
+            "winner": battle.winner,
+            "rewards": {
+                "coins": 50,
+                "dust": 50,
+                "rating": 20
+            } if battle.winner == "player" else {
+                "coins": 25,
+                "dust": 25,
+                "rating": -15
+            } if battle.winner == "enemy" else None
         }
 
     except Exception as e:

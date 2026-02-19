@@ -209,8 +209,14 @@ async def cmd_arena(message: types.Message, user_id: int = None):
 
 @router.callback_query(F.data == "open_arena")
 async def open_arena(callback: types.CallbackQuery):
-    await cmd_arena(callback.message, callback.from_user.id)
-    await callback.answer()
+    """Обработчик кнопки открытия арены"""
+    try:
+        # Передаем правильный параметр
+        await cmd_arena(callback.message, callback.from_user.id)
+        await callback.answer()
+    except Exception as e:
+        logger.exception(f"Ошибка в open_arena: {e}")
+        await callback.answer("❌ Ошибка открытия арены", show_alert=True)
     
 
 @router.message(F.web_app_data)
