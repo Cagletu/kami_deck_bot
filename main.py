@@ -225,25 +225,22 @@ async def get_battle(battle_id: str):
         battle_data = await battle_storage.get_battle(battle_id)
         if not battle_data:
             logger.error(f"Battle {battle_id} not found in Redis")
+            # Для отладки - проверим все ключи в Redis
+            try:
+                import redis.asyncio as redis
+                r = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
+                keys = await r.keys("battle:*")
+                logger.info(f"Available Redis keys: {keys}")
+            except:
+                pass
             return {"success": False, "error": "Battle not found"}
 
-        # Преобразуем данные для отправки
-        player_cards = []
-        enemy_cards = []
-
-        # Восстанавливаем карты из сохраненных данных
-        for card_data in battle_data.get("player_cards", []):
-            if isinstance(card_data, dict):
-                player_cards.append(card_data)
-
-        for card_data in battle_data.get("enemy_cards", []):
-            if isinstance(card_data, dict):
-                enemy_cards.append(card_data)
+        logger.info(f"Battle {battle_id} found: {len(battle_data.get('player_cards', []))} player cards")
 
         return {
             "success": True,
-            "player_cards": player_cards,
-            "enemy_cards": enemy_cards,
+            "player_cards": battle_data.get("player_cards", []),
+            "enemy_cards": battle_data.get("enemy_cards", []),
             "turn": battle_data.get("turn", 0)
         }
     except Exception as e:
@@ -401,6 +398,31 @@ async def create_test_battle(battle_id: str):
         "enemy_cards": enemy_cards,
         "turn": 0
     }
+
+# тестовый эндпоинт для проверки Redis
+@app.get("/debug/redis")
+async def debug_redis():
+    """Проверка Redis"""
+    try:
+        import redis.asyncio as redis
+        r = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
+
+        # Получаем все ключи
+        keys = await r.keys("*")
+
+        # Получаем один ключ для примера
+        sample = None
+        if keys:
+            sample = await r.get(keys[0])
+
+        return {
+            "status": "ok",
+            "keys_count": len(keys),
+            "keys": [k.decode() if isinstance(k, bytes) else k for k in keys[:10]],
+            "sample": sample.decode() if sample and isinstance(sample, bytes) else str(sample)
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
 
 
 @app.exception_handler(Exception)

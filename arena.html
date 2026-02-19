@@ -189,6 +189,25 @@
         .enemy-health-bar-fill {
             background: linear-gradient(90deg, #ff6b6b, #ff8e8e);
         }
+
+        .card-image {
+            width: 100%;
+            height: 80px;
+            object-fit: cover;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            border: 2px solid rgba(255,255,255,0.2);
+            transition: all 0.3s;
+        }
+
+        .card-slot:hover .card-image {
+            border-color: #4ecdc4;
+            transform: scale(1.02);
+        }
+
+        .enemy-card .card-image {
+            height: 60px;
+        }
     </style>
 </head>
 <body>
@@ -322,13 +341,14 @@
                 cardEl.className = 'card-slot';
                 cardEl.onclick = () => selectCard(card.id);
                 cardEl.innerHTML = `
-                    <div class="card-name">${card.name}</div>
-                    <div class="card-stats">
-                        <span>💪 ${card.power}</span>
-                        <span>❤️ ${card.health}/${card.max_health}</span>
-                        <span>⚔️ ${card.attack}</span>
-                        <span>🛡️ ${card.defense}</span>
-                    </div>
+                ${card.image_url ? `<img src="${card.image_url}" style="width: 100%; height: 60px; object-fit: cover; border-radius: 5px; margin-bottom: 5px;">` : ''}
+                <div class="card-name">${card.name}</div>
+                <div class="card-stats">
+                    <span>💪 ${card.power}</span>
+                    <span>❤️ ${card.health}/${card.max_health}</span>
+                    <span>⚔️ ${card.attack}</span>
+                    <span>🛡️ ${card.defense}</span>
+                </div>
                     <div class="health-bar">
                         <div class="health-bar-fill" style="width: ${healthPercent}%"></div>
                     </div>
@@ -352,11 +372,13 @@
                 const cardEl = document.createElement('div');
                 cardEl.className = 'enemy-card';
                 cardEl.innerHTML = `
+                    ${card.image_url ? `<img src="${card.image_url}" style="width: 100%; height: 60px; object-fit: cover; border-radius: 5px; margin-bottom: 5px;">` : ''}
                     <div class="card-name">${card.name}</div>
                     <div class="card-stats">
                         <span>💪 ${card.power}</span>
                         <span>❤️ ${card.health}/${card.max_health}</span>
                     </div>
+                    <div class="health-bar enemy-health-bar">
                     <div class="health-bar enemy-health-bar">
                         <div class="health-bar-fill enemy-health-bar-fill" style="width: ${healthPercent}%"></div>
                     </div>
@@ -469,6 +491,9 @@
         function closeArena() {
             if (tg) {
                 tg.close();
+            } else {
+                // Если не в Telegram, просто показываем сообщение
+                alert('Закройте вкладку браузера');
             }
         }
         

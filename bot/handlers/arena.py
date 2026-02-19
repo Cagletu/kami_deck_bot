@@ -166,8 +166,7 @@ async def cmd_arena(message: types.Message, user_id: int = None):
         # Создаем бой
         battle = ArenaBattle(user_battle_cards, opponent_battle_cards)
         
-        # Сохраняем в Redis с полными данными карт
-        await battle_storage.save_battle(battle_id, {
+        battle_data = {
             "user_id": message.from_user.id,
             "opponent_id": opponent_id,
             "player_cards": [card.to_dict() for card in user_battle_cards],
@@ -175,7 +174,10 @@ async def cmd_arena(message: types.Message, user_id: int = None):
             "turn": 0,
             "winner": None,
             "created_at": datetime.now().isoformat()
-        })
+        }
+
+        logger.info(f"Saving battle {battle_id} to Redis: {len(battle_data['player_cards'])} player cards, {len(battle_data['enemy_cards'])} enemy cards")
+        await battle_storage.save_battle(battle_id, battle_data)
 
         # Создаем клавиатуру с WebApp
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
