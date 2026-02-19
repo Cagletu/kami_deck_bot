@@ -448,6 +448,29 @@ async def debug_redis():
         return {"status": "error", "error": str(e)}
 
 
+@app.get("/debug/battle/{battle_id}")
+async def debug_battle(battle_id: str):
+    """Проверка конкретной битвы"""
+    try:
+        battle_data = await battle_storage.get_battle(battle_id)
+        if not battle_data:
+            return {"status": "not_found", "battle_id": battle_id}
+
+        # Проверяем структуру данных
+        return {
+            "status": "found",
+            "battle_id": battle_id,
+            "has_player_cards": len(battle_data.get("player_cards", [])) > 0,
+            "player_cards_count": len(battle_data.get("player_cards", [])),
+            "has_enemy_cards": len(battle_data.get("enemy_cards", [])) > 0,
+            "enemy_cards_count": len(battle_data.get("enemy_cards", [])),
+            "turn": battle_data.get("turn", 0),
+            "created_at": battle_data.get("created_at")
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.exception(f"Global exception: {exc}")

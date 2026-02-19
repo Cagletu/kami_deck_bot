@@ -154,7 +154,7 @@ async def cmd_arena(message: types.Message, user_id: int = None):
             return
 
         # Генерируем противника
-        opponent_deck, opponent_id = await generate_opponent(message.from_user.id)
+        opponent_deck, opponent_id = await generate_opponent(user.id)
 
         # Создаем уникальный ID для боя
         battle_id = str(uuid.uuid4())
@@ -226,6 +226,30 @@ async def handle_webapp_data(message: types.Message):
         data = json.loads(message.web_app_data.data)
         action = data.get('action')
         battle_id = data.get('battle_id')
+
+        # === ДОБАВЛЯЕМ ОБРАБОТКУ НАГРАД И ЗАКРЫТИЯ ===
+        if action == 'battle_result':
+            result = data.get('result')
+            rewards = data.get('rewards', {})
+
+            if result == 'win':
+                await message.answer(
+                    f"🎉 <b>ПОБЕДА!</b>\n\n"
+                    f"💰 Получено: {rewards.get('coins', 0)} монет\n"
+                    f"✨ Получено: {rewards.get('dust', 0)} пыли\n"
+                    f"📈 Рейтинг: +{rewards.get('rating', 0)}"
+                )
+            elif result == 'lose':
+                await message.answer(
+                    "😔 <b>ПОРАЖЕНИЕ</b>\n\n"
+                    "💪 В следующий раз повезет!"
+                )
+            return
+
+        if action == 'close_arena':
+            logger.info(f"User {message.from_user.id} closed arena")
+            return
+
 
         if not battle_id:
             return

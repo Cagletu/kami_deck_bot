@@ -251,18 +251,25 @@
         let battleLog = [];
         
         try {
-            tg = window.Telegram?.WebApp;
-            if (tg) {
+            // Проверяем, открыто ли приложение в Telegram
+            if (window.Telegram && window.Telegram.WebApp) {
+                tg = window.Telegram.WebApp;
                 tg.expand();
                 tg.ready();
                 tg.enableClosingConfirmation();
                 console.log('Telegram WebApp инициализирован');
+
+                // Добавляем обработчик закрытия
+                window.addEventListener('beforeunload', function() {
+                    // Ничего не делаем, просто сохраняем
+                });
             } else {
-                console.log('Режим разработки: Telegram WebApp не загружен');
+                console.log('Режим разработки: приложение открыто в браузере');
             }
         } catch (e) {
-            console.log('Режим разработки');
+            console.log('Ошибка инициализации Telegram WebApp:', e);
         }
+
         
         // Получаем battle_id из URL
         function getBattleIdFromUrl() {
@@ -343,7 +350,10 @@
                 cardEl.className = 'card-slot';
                 cardEl.onclick = () => selectCard(card.id);
                 cardEl.innerHTML = `
-                ${card.image_url ? `<img src="${card.image_url}" style="width: 100%; height: 70px; object-fit: cover; border-radius: 5px; margin-bottom: 5px;">` : ''}
+                <div style="position: relative;">
+                    ${card.image_url ? `<img src="${card.image_url}" style="width: 100%; height: 70px; object-fit: cover; border-radius: 5px; margin-bottom: 5px;">` : ''}
+                    <span style="position: absolute; top: 2px; left: 2px; background: rgba(0,0,0,0.7); padding: 2px 6px; border-radius: 10px; font-size: 10px;">⚔️ ТЫ</span>
+                </div>
                 <div class="card-name">${card.name}</div>
                 <div class="card-stats">
                     <span>💪 ${card.power}</span>
@@ -375,7 +385,10 @@
                 cardEl.setAttribute('data-card-id', card.id);
                 cardEl.className = 'enemy-card';
                 cardEl.innerHTML = `
-                    ${card.image_url ? `<img src="${card.image_url}" style="width: 100%; height: 70px; object-fit: cover; border-radius: 5px; margin-bottom: 5px;">` : ''}
+                    <div style="position: relative;">
+                        ${card.image_url ? `<img src="${card.image_url}" style="width: 100%; height: 70px; object-fit: cover; border-radius: 5px; margin-bottom: 5px;">` : ''}
+                        <span style="position: absolute; top: 2px; right: 2px; background: rgba(255,0,0,0.7); padding: 2px 6px; border-radius: 10px; font-size: 10px;">👹 ВРАГ</span>
+                    </div>
                     <div class="card-name">${card.name}</div>
                     <div class="card-stats">
                         <span>💪 ${card.power}</span>
@@ -521,11 +534,16 @@
             }
         }
 
-        async function autoBattle() {
-            const btn = document.getElementById('nextTurnBtn');
-            let data = null;
+        // Обновите функцию autoBattle
 
-            // Пока бой не закончен и есть живые карты
+        async function autoBattle() {
+            const autoBtn = document.getElementById('autoBattleBtn');
+            const turnBtn = document.getElementById('nextTurnBtn');
+
+            autoBtn.disabled = true;
+            turnBtn.disabled = true;
+
+            // Пока бой не закончен
             while (true) {
                 // Проверяем есть ли живые карты
                 const alivePlayers = Object.values(playerCards).filter(c => c.is_alive !== false);
@@ -534,9 +552,6 @@
                 if (alivePlayers.length === 0 || aliveEnemies.length === 0) {
                     break;
                 }
-
-                btn.disabled = true;
-                btn.textContent = '⚡ АВТОБОЙ...';
 
                 try {
                     const response = await fetch('/api/battle/turn', {
@@ -549,9 +564,26 @@
                         })
                     });
 
-                    data = await response.json();
+                    const data = await response.json();
 
                     if (data.success) {
+                        // Анимируем каждый удар
+                        if (data.actions && data.actions.length > 0) {
+                            for (const action of data.actions) {
+                                // Определяем кто атакует
+                                const isPlayerAttacker = action.attacker_id > 0;
+
+                                // Анимируем удар
+                                await animateAttack(
+                                    action.attacker_id,
+                                    action.defender_id,
+                                    action.damage,
+                                    action.is_critical,
+                                    isPlayerAttacker  // Передаем флаг для цвета
+                                );
+                            }
+                        }
+
                         // Обновляем состояние карт
                         data.player_cards.forEach(card => {
                             if (playerCards[card.id]) {
@@ -568,29 +600,39 @@
                         currentTurn = data.turn;
                         document.getElementById('turn').textContent = currentTurn;
 
-                        // Добавляем логи с задержкой для анимации
+                        // Добавляем логи
                         if (data.log && data.log.length > 0) {
                             for (const log of data.log) {
                                 addLog(log);
-                                renderBattle();
-                                await new Promise(resolve => setTimeout(resolve, 300));
+                                // Маленькая задержка для читаемости
+                                await new Promise(resolve => setTimeout(resolve, 200));
                             }
                         }
+
+                        renderBattle();
 
                         // Проверяем победителя
                         if (data.winner) {
                             if (data.winner === 'player') {
                                 addLog('🎉 ПОБЕДА!');
-                                tg?.sendData(JSON.stringify({ action: 'battle_result', result: 'win' }));
+                                if (data.rewards) {
+                                    addLog(`💰 Награды: ${data.rewards.coins} монет, ${data.rewards.dust} пыли, ${data.rewards.rating} рейтинга`);
+                                }
+                                tg?.sendData(JSON.stringify({ 
+                                    action: 'battle_result', 
+                                    result: 'win',
+                                    rewards: data.rewards 
+                                }));
                             } else if (data.winner === 'enemy') {
                                 addLog('😔 Поражение...');
-                                tg?.sendData(JSON.stringify({ action: 'battle_result', result: 'lose' }));
+                                tg?.sendData(JSON.stringify({ 
+                                    action: 'battle_result', 
+                                    result: 'lose' 
+                                }));
                             }
+
                             break;
                         }
-
-                        renderBattle();
-                        await new Promise(resolve => setTimeout(resolve, 500));
                     } else {
                         addLog('❌ ' + (data.error || 'Ошибка сервера'));
                         break;
@@ -602,59 +644,59 @@
                 }
             }
 
-            btn.disabled = false;
-            btn.textContent = '⚡ СЛЕДУЮЩИЙ ХОД';
-
-            // Финальный рендер
-            renderBattle();
+            autoBtn.disabled = false;
+            turnBtn.disabled = false;
         }
 
-        // В arena.html добавьте функцию для анимации удара
 
-        async function animateAttack(attackerId, defenderId, damage, isCritical) {
+        async function animateAttack(attackerId, defenderId, damage, isCritical, isPlayerAttacker = true) {
             const attackerEl = document.querySelector(`[data-card-id="${attackerId}"]`);
             const defenderEl = document.querySelector(`[data-card-id="${defenderId}"]`);
 
-            if (attackerEl) {
-                attackerEl.style.transform = 'scale(1.1)';
-                attackerEl.style.transition = 'transform 0.1s';
-                await new Promise(resolve => setTimeout(resolve, 50));
-                attackerEl.style.transform = 'scale(1)';
-            }
+            if (!attackerEl || !defenderEl) return;
 
-            if (defenderEl) {
-                defenderEl.style.backgroundColor = isCritical ? '#ff6b6b' : '#ff8e8e';
-                defenderEl.style.transition = 'background-color 0.1s';
-                await new Promise(resolve => setTimeout(resolve, 50));
-                defenderEl.style.backgroundColor = '';
-            }
+            // Цвет атаки (синий для игрока, красный для врага)
+            const attackColor = isPlayerAttacker ? '#4ecdc4' : '#ff6b6b';
+
+            // Анимация атакующего
+            attackerEl.style.transform = 'scale(1.1)';
+            attackerEl.style.boxShadow = `0 0 15px ${attackColor}`;
+            attackerEl.style.transition = 'all 0.1s';
+            await new Promise(resolve => setTimeout(resolve, 100));
+            attackerEl.style.transform = 'scale(1)';
+            attackerEl.style.boxShadow = 'none';
+
+            // Анимация защищающегося
+            defenderEl.style.backgroundColor = isCritical ? attackColor : 'rgba(255,255,255,0.2)';
+            defenderEl.style.transform = 'translateX(5px)';
+            await new Promise(resolve => setTimeout(resolve, 100));
+            defenderEl.style.backgroundColor = '';
+            defenderEl.style.transform = 'translateX(0)';
 
             // Показываем урон
             const damageEl = document.createElement('div');
             damageEl.style.position = 'absolute';
-            damageEl.style.color = isCritical ? '#ff6b6b' : '#ffffff';
+            damageEl.style.color = isCritical ? attackColor : '#ffffff';
             damageEl.style.fontSize = '24px';
             damageEl.style.fontWeight = 'bold';
             damageEl.style.zIndex = '1000';
             damageEl.style.textShadow = '2px 2px 4px black';
+            damageEl.style.pointerEvents = 'none';
             damageEl.textContent = `-${damage}${isCritical ? '!' : ''}`;
 
-            const rect = defenderEl?.getBoundingClientRect();
-            if (rect) {
-                damageEl.style.left = rect.left + rect.width/2 + 'px';
-                damageEl.style.top = rect.top + 'px';
-                document.body.appendChild(damageEl);
+            const rect = defenderEl.getBoundingClientRect();
+            damageEl.style.left = rect.left + rect.width/2 - 20 + 'px';
+            damageEl.style.top = rect.top + 'px';
 
-                // Анимация урона
-                let opacity = 1;
-                for (let i = 0; i < 10; i++) {
-                    damageEl.style.opacity = opacity;
-                    damageEl.style.top = (rect.top - i*5) + 'px';
-                    opacity -= 0.1;
-                    await new Promise(resolve => setTimeout(resolve, 20));
-                }
-                damageEl.remove();
+            document.body.appendChild(damageEl);
+
+            // Анимация урона
+            for (let i = 0; i < 10; i++) {
+                damageEl.style.opacity = (10 - i) / 10;
+                damageEl.style.top = (rect.top - i*3) + 'px';
+                await new Promise(resolve => setTimeout(resolve, 20));
             }
+            damageEl.remove();
         }
 
         // Функция для отображения наград
@@ -681,6 +723,13 @@
         
         function closeArena() {
             if (tg) {
+                // Пытаемся отправить сообщение о закрытии
+                try {
+                    tg.sendData(JSON.stringify({ action: 'close_arena' }));
+                } catch (e) {
+                    console.log('Ошибка отправки данных при закрытии');
+                }
+                // Закрываем WebApp
                 tg.close();
             } else {
                 // Если не в Telegram, просто показываем сообщение
