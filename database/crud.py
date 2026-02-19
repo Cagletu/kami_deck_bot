@@ -495,3 +495,23 @@ async def get_user_cards_count(user_id: int, rarity: str = None) -> int:
             )
 
         return await session.scalar(query)
+
+
+async def sync_user_deck(session, user_id: int):
+    """
+    Синхронизирует JSON selected_deck в users
+    на основе флагов is_in_deck в user_cards
+    """
+    result = await session.execute(
+        select(UserCard.id).where(
+            UserCard.user_id == user_id,
+            UserCard.is_in_deck == True
+        )
+    )
+
+    deck_ids = [row[0] for row in result.all()]
+
+    user = await session.get(User, user_id)
+    user.selected_deck = deck_ids
+
+    return deck_ids

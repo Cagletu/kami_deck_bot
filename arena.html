@@ -86,12 +86,17 @@
         .card-name {
             font-weight: bold;
             margin-bottom: 5px;
+            font-size: 11px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         
         .card-stats {
-            display: flex;
-            gap: 10px;
-            font-size: 10px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 5px;
+            font-size: 9px;
             color: rgba(255,255,255,0.7);
         }
         
@@ -478,7 +483,23 @@
 
                     // Добавляем логи
                     if (data.log && data.log.length > 0) {
-                        data.log.forEach(log => addLog(log));
+                        data.log.forEach(log => {
+                            // Добавляем эмодзи для различения сторон
+                            let formattedLog = log;
+                            if (log.includes('атакует')) {
+                                // Пытаемся определить кто атаковал
+                                const isPlayerAttacker = data.actions?.find(a => 
+                                    a.attacker_name === log.split(' ')[1]
+                                )?.attacker_id > 0;
+
+                                if (isPlayerAttacker) {
+                                    formattedLog = '⚔️ [ТЫ] ' + log;
+                                } else {
+                                    formattedLog = '👹 [ВРАГ] ' + log;
+                                }
+                            }
+                            addLog(formattedLog);
+                        });
                     }
 
                     // Проверяем победителя
@@ -603,8 +624,19 @@
                         // Добавляем логи
                         if (data.log && data.log.length > 0) {
                             for (const log of data.log) {
-                                addLog(log);
-                                // Маленькая задержка для читаемости
+                                let formattedLog = log;
+                                if (log.includes('атакует')) {
+                                    const isPlayerAttacker = data.actions?.find(a => 
+                                        a.attacker_name === log.split(' ')[1]
+                                    )?.attacker_id > 0;
+
+                                    if (isPlayerAttacker) {
+                                        formattedLog = '⚔️ [ТЫ] ' + log;
+                                    } else {
+                                        formattedLog = '👹 [ВРАГ] ' + log;
+                                    }
+                                }
+                                addLog(formattedLog);
                                 await new Promise(resolve => setTimeout(resolve, 200));
                             }
                         }
@@ -725,12 +757,18 @@
             if (tg) {
                 // Пытаемся отправить сообщение о закрытии
                 try {
-                    tg.sendData(JSON.stringify({ action: 'close_arena' }));
+                    tg.sendData(JSON.stringify({ 
+                        action: 'close_arena',
+                        battle_id: battleId 
+                    }));
+                    // Даем время на отправку
+                    setTimeout(() => {
+                        tg.close();
+                    }, 100);
                 } catch (e) {
                     console.log('Ошибка отправки данных при закрытии');
+                    tg.close();
                 }
-                // Закрываем WebApp
-                tg.close();
             } else {
                 // Если не в Telegram, просто показываем сообщение
                 alert('Закройте вкладку браузера');

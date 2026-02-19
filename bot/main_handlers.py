@@ -756,6 +756,11 @@ async def toggle_deck_handler(callback: types.CallbackQuery):
                 return
 
             user_card.is_in_deck = not user_card.is_in_deck
+
+            # 🔥 Синхронизируем JSON
+            from database.crud import sync_user_deck
+            await sync_user_deck(session, user.id)
+
             await session.commit()
 
             status = "⚔️ карта добавлена в колоду" if user_card.is_in_deck else "📦 карта убрана из колоды"
@@ -1255,13 +1260,14 @@ async def collection_stats(callback: types.CallbackQuery):
             ) or 0
 
             # ⚔️ В колоде
-            deck_count = await session.scalar(
-                select(func.count(UserCard.id))
-                .where(
-                    UserCard.user_id == user.id,
-                    UserCard.is_in_deck == True
-                )
-            ) or 0
+            deck_count = len(user.selected_deck or [])
+            # deck_count = await session.scalar(
+            #     select(func.count(UserCard.id))
+            #     .where(
+            #         UserCard.user_id == user.id,
+            #         UserCard.is_in_deck == True
+            #     )
+            # ) or 0
             logger.info(f"Collection user: tg_id={callback.from_user.id}, db_id={user.id}")
 
 

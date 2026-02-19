@@ -40,37 +40,40 @@ async def get_user_deck(user_id: int) -> list:
         )
         return result.all()
 
-async def generate_opponent(user_id: int) -> list:
+async def generate_opponent(user_id: int) -> tuple:
     """Генерирует колоду противника"""
+
     async with AsyncSessionLocal() as session:
-        # Пробуем найти реального противника
+
+        # Ищем игроков с полной колодой (>=5 карт)
         result = await session.execute(
             select(User)
-            .where(User.id != user_id)
+            .where(
+                User.id != user_id,
+                func.coalesce(func.json_array_length(User.selected_deck), 0) >= 5
+            )
             .order_by(func.random())
             .limit(1)
         )
+
         opponent = result.scalar_one_or_none()
 
-        if opponent:
+        if opponent and opponent.selected_deck:
+
             result = await session.execute(
                 select(UserCard, Card)
                 .join(Card, UserCard.card_id == Card.id)
-                .where(
-                    and_(
-                        UserCard.user_id == opponent.id,
-                        UserCard.is_in_deck == True
-                    )
-                )
-                .order_by(Card.rarity.desc())
+                .where(UserCard.id.in_(opponent.selected_deck))
                 .limit(5)
             )
+
             opponent_cards = result.all()
 
-            if opponent_cards:
+            if len(opponent_cards) >= 5:
+                logger.info(f"Found real opponent: {opponent.id}")
                 return opponent_cards, opponent.id
 
-        # Если нет противника, генерируем тестовую колоду
+        logger.info("No real opponent found, generating test deck")
         return await generate_test_deck(), None
 
 async def generate_test_deck() -> list:
@@ -85,16 +88,35 @@ async def generate_test_deck() -> list:
 
         test_deck = []
         for i, card in enumerate(cards):
+            level = random.randint(5, 15)
+
+            # Рассчитываем характеристики на основе уровня
+            power = int(card.base_power * (1 + (level - 1) * 0.06))  # +6% за уровень
+            health = int(card.base_health * (1 + (level - 1) * 0.04))  # +4% за уровень
+            attack = int(card.base_attack * (1 + (level - 1) * 0.07))  # +7% за уровень
+            defense = int(card.base_defense * (1 + (level - 1) * 0.04))  # +4% за уровень
+
+            # Добавляем бонус редкости
+            rarity_mult = {
+                'E': 1.0, 'D': 1.1, 'C': 1.2, 'B': 1.3,
+                'A': 1.45, 'S': 1.65, 'ASS': 1.8, 'SSS': 2.0
+            }.get(card.rarity, 1.0)
+
+            power = int(power * rarity_mult)
+            health = int(health * rarity_mult)
+            attack = int(attack * rarity_mult)
+            defense = int(defense * rarity_mult)
+
             test_deck.append((
                 type('UserCard', (), {
                     'id': -i-1,
                     'user_id': -1,
                     'card_id': card.id,
-                    'level': random.randint(5, 30),
-                    'current_power': card.base_power * (1 + random.random() * 0.5),
-                    'current_health': card.base_health * (1 + random.random() * 0.5),
-                    'current_attack': card.base_attack * (1 + random.random() * 0.5),
-                    'current_defense': card.base_defense * (1 + random.random() * 0.5),
+                    'level': level,
+                    'current_power': power,
+                    'current_health': health,
+                    'current_attack': attack,
+                    'current_defense': defense,
                     'is_in_deck': True
                 }),
                 card
@@ -226,30 +248,81 @@ async def handle_webapp_data(message: types.Message):
         data = json.loads(message.web_app_data.data)
         action = data.get('action')
         battle_id = data.get('battle_id')
+        logger.info(f"WebApp data received: action={action}, battle_id={battle_id}")
 
-        # === ДОБАВЛЯЕМ ОБРАБОТКУ НАГРАД И ЗАКРЫТИЯ ===
+        # ===== ОБРАБОТКА РЕЗУЛЬТАТА БИТВЫ =====
         if action == 'battle_result':
             result = data.get('result')
             rewards = data.get('rewards', {})
 
-            if result == 'win':
-                await message.answer(
-                    f"🎉 <b>ПОБЕДА!</b>\n\n"
-                    f"💰 Получено: {rewards.get('coins', 0)} монет\n"
-                    f"✨ Получено: {rewards.get('dust', 0)} пыли\n"
-                    f"📈 Рейтинг: +{rewards.get('rating', 0)}"
-                )
-            elif result == 'lose':
-                await message.answer(
-                    "😔 <b>ПОРАЖЕНИЕ</b>\n\n"
-                    "💪 В следующий раз повезет!"
-                )
+            logger.info(f"Battle result: {result}, rewards: {rewards}")
+
+            async with AsyncSessionLocal() as session:
+                user = await get_user_or_create(session, message.from_user.id)
+
+                # Начисляем награды
+                old_rating = user.arena_rating
+                old_coins = user.coins
+                old_dust = user.dust
+
+                if result == 'win':
+                    user.arena_wins += 1
+                    user.arena_rating += rewards.get('rating', 20)
+                    user.coins += rewards.get('coins', 150)
+                    user.dust += rewards.get('dust', 25)
+
+                    await message.answer(
+                        f"🎉 <b>ПОБЕДА!</b>\n\n"
+                        f"💰 Монеты: {old_coins} → {user.coins} (+{rewards.get('coins', 150)})\n"
+                        f"✨ Пыль: {old_dust} → {user.dust} (+{rewards.get('dust', 25)})\n"
+                        f"📈 Рейтинг: {old_rating} → {user.arena_rating} (+{rewards.get('rating', 20)})"
+                    )
+                elif result == 'lose':
+                    user.arena_losses += 1
+                    rating_change = rewards.get('rating', -5)
+                    user.arena_rating = max(0, user.arena_rating + rating_change)  # rating_change отрицательный
+                    user.coins += rewards.get('coins', 50)
+                    user.dust += rewards.get('dust', 10)
+
+                    await message.answer(
+                        f"😔 <b>ПОРАЖЕНИЕ</b>\n\n"
+                        f"💰 Монеты: {old_coins} → {user.coins} (+{rewards.get('coins', 50)})\n"
+                        f"✨ Пыль: {old_dust} → {user.dust} (+{rewards.get('dust', 10)})\n"
+                        f"📈 Рейтинг: {old_rating} → {user.arena_rating} ({rating_change})"
+                    )
+
+                await session.commit()
+
+                # Сохраняем результат битвы в БД
+                battle_data = await battle_storage.get_battle(battle_id) if battle_id else None
+                if battle_data:
+                    db_battle = DBArenaBattle(
+                        attacker_id=user.id,
+                        defender_id=battle_data.get("opponent_id") or -1,
+                        attacker_deck=[c["user_card_id"] for c in battle_data.get("player_cards", [])],
+                        defender_deck=[c["user_card_id"] for c in battle_data.get("enemy_cards", []) if c["user_card_id"] > 0],
+                        rounds=battle_data.get("turn", 0),
+                        winner_id=user.id if result == 'win' else None,
+                        result="attacker_win" if result == 'win' else "defender_win",
+                        attacker_rating_change=rewards.get('rating', 20) if result == 'win' else rating_change,
+                        attacker_reward_coins=rewards.get('coins', 150) if result == 'win' else rewards.get('coins', 50),
+                        attacker_reward_dust=rewards.get('dust', 25) if result == 'win' else rewards.get('dust', 10),
+                        ended_at=datetime.now()
+                    )
+                    session.add(db_battle)
+                    await session.commit()
+                    await session.refresh(user)
+
+                # Удаляем битву из Redis
+                if battle_id:
+                    await battle_storage.delete_battle(battle_id)
+
             return
 
+        # ===== ОСТАЛЬНАЯ ОБРАБОТКА =====
         if action == 'close_arena':
             logger.info(f"User {message.from_user.id} closed arena")
             return
-
 
         if not battle_id:
             return
@@ -326,8 +399,8 @@ async def handle_webapp_data(message: types.Message):
                         db_battle.winner_id = user.id
                         db_battle.result = "attacker_win"
                         db_battle.attacker_rating_change = 20
-                        db_battle.attacker_reward_coins = 150
-                        db_battle.attacker_reward_dust = 25
+                        db_battle.attacker_reward_coins = 50
+                        db_battle.attacker_reward_dust = 50
 
                         user.arena_wins += 1
                         user.arena_rating += 20
@@ -335,9 +408,9 @@ async def handle_webapp_data(message: types.Message):
                         user.dust += 25
                     else:
                         db_battle.result = "defender_win"
-                        db_battle.attacker_rating_change = -5
-                        db_battle.attacker_reward_coins = 50
-                        db_battle.attacker_reward_dust = 10
+                        db_battle.attacker_rating_change = -15
+                        db_battle.attacker_reward_coins = 25
+                        db_battle.attacker_reward_dust = 25
 
                         user.arena_losses += 1
                         user.arena_rating = max(0, user.arena_rating - 5)
