@@ -56,7 +56,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
                 first_name=message.from_user.first_name,
                 last_name=message.from_user.last_name)
 
-        active, uncollected = await ExpeditionManager.get_active_expeditions(session, user.id)
+        active, uncollected = await ExpeditionManager.get_expeditions_info(session, user.id)
 
         welcome_text = f"""
 🎮 <b>Добро пожаловать в Kami Deck</b>, {message.from_user.first_name}!
@@ -94,7 +94,7 @@ async def cmd_profile(message: types.Message):
         async with AsyncSessionLocal() as session:
             user = await get_user_or_create(session, message.from_user.id)
 
-        active, uncollected = await ExpeditionManager.get_active_expeditions(session, user.id)
+        active, uncollected = await ExpeditionManager.get_expeditions_info(session, user.id)
 
         total_battles = user.arena_wins + user.arena_losses
         win_rate = (user.arena_wins / total_battles *
@@ -700,7 +700,7 @@ async def cb_collection_page(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("favorite_"))
 async def toggle_favorite_handler(callback: types.CallbackQuery):
-    """Добавить/убрать из избранного"""
+    """Добавить/убрать из избранного (лимит 20)"""
     try:
         card_id = int(callback.data.replace("favorite_", ""))
         logger.info(f"Избранное: карта {card_id}")
@@ -710,17 +710,46 @@ async def toggle_favorite_handler(callback: types.CallbackQuery):
 
             result = await session.execute(
                 select(UserCard).where(
-                    and_(UserCard.id == card_id, UserCard.user_id == user.id)))
+                    and_(
+                        UserCard.id == card_id,
+                        UserCard.user_id == user.id
+                    )
+                )
+            )
             user_card = result.scalar_one_or_none()
 
             if not user_card:
                 await callback.answer("❌ Карта не найдена", show_alert=True)
                 return
 
+            # 🔥 Если добавляем в избранное — проверяем лимит
+            if not user_card.is_favorite:
+                favorite_count = await session.scalar(
+                    select(func.count(UserCard.id)).where(
+                        and_(
+                            UserCard.user_id == user.id,
+                            UserCard.is_favorite == True
+                        )
+                    )
+                ) or 0
+
+                if favorite_count >= 20:
+                    await callback.answer(
+                        "❌ Можно добавить не более 20 карт в избранное!",
+                        show_alert=True
+                    )
+                    return
+
+            # Переключаем состояние
             user_card.is_favorite = not user_card.is_favorite
             await session.commit()
 
-            status = "⭐ добавлена в избранное" if user_card.is_favorite else "☆ убрана из избранного"
+            status = (
+                "⭐ добавлена в избранное"
+                if user_card.is_favorite
+                else "☆ убрана из избранного"
+            )
+
             await callback.answer(status, show_alert=False)
 
             # Обновляем просмотр карты
@@ -1138,7 +1167,7 @@ async def collection_favorites(callback: types.CallbackQuery):
             text = "<b>⭐ ИЗБРАННЫЕ КАРТЫ</b>\n\n"
             card_ids = []
 
-            for i, (user_card, card) in enumerate(cards[:5], 1):
+            for i, (user_card, card) in enumerate(cards[:10], 1):
                 text += f"{i}. <b>{card.card_name}</b> [{card.rarity}] Ур.{user_card.level}\n"
                 text += f"   💪 {user_card.current_power}\n"
                 card_ids.append(user_card.id)
@@ -1197,9 +1226,10 @@ async def collection_in_deck(callback: types.CallbackQuery):
             text = "<b>⚔️ КАРТЫ В КОЛОДЕ</b>\n\n"
             card_ids = []
 
-            for i, (user_card, card) in enumerate(cards, 1):
+            for i, (user_card, card) in enumerate(cards[:5], 1):
                 text += f"{i}. <b>{card.card_name}</b> [{card.rarity}] Ур.{user_card.level}\n"
                 text += f"   💪 {user_card.current_power} | ⚔️ {user_card.current_attack} | 🛡️ {user_card.current_defense}\n\n"
+                card_ids.append(user_card.id)
 
             # Кнопки просмотра
             keyboard = []
