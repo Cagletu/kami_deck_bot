@@ -353,7 +353,7 @@ async def battle_turn(request: TurnRequest):
             "player_cards": battle_data["player_cards"],
             "enemy_cards": battle_data["enemy_cards"],
             "log": battle_log,
-            "actions": actions_data,  # Добавляем для анимации
+            "actions": actions_data,
             "winner": battle.winner,
             "rewards": {
                 "coins": 50,

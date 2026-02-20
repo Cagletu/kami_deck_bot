@@ -336,6 +336,30 @@
                     document.getElementById('battle-sections').style.display = 'flex';
                     document.getElementById('battle-log').style.display = 'block';
                     document.getElementById('battle-controls').style.display = 'flex';
+                    // Добавляем поддержку touch событий
+                    document.querySelectorAll('.card-slot').forEach(el => {
+                        el.addEventListener('touchstart', (e) => {
+                            e.preventDefault();
+                            const cardId = e.currentTarget.getAttribute('data-card-id');
+                            if (cardId) selectCard(cardId);
+                        });
+                    });
+
+                    // И обновите кнопки
+                    document.getElementById('nextTurnBtn').addEventListener('touchstart', (e) => {
+                        e.preventDefault();
+                        nextTurn();
+                    });
+
+                    document.getElementById('autoBattleBtn').addEventListener('touchstart', (e) => {
+                        e.preventDefault();
+                        autoBattle();
+                    });
+
+                    document.querySelector('.button.close').addEventListener('touchstart', (e) => {
+                        e.preventDefault();
+                        closeArena();
+                    });
                     
                     renderBattle();
                     addLog('⚔️ Битва началась!');
@@ -526,7 +550,7 @@
                             addLog('🎉 ПОБЕДА!');
                             // Добавляем награды
                             if (data.rewards) {
-                                addLog(`💰 Награды: ${data.rewards.coins} монет, ${data.rewards.dust} пыли`);
+                                addLog(`💰 Награды: ${data.rewards.coins} монет, ${data.rewards.dust} пыли, ${data.rewards.rating} рейтинга`);
                             }
                             tg?.sendData(JSON.stringify({ 
                                 action: 'battle_result', 
@@ -535,6 +559,9 @@
                             }));
                         } else if (data.winner === 'enemy') {
                             addLog('😔 Поражение...');
+                            if (data.rewards) {
+                                addLog(`💰 Награды: ${data.rewards.coins} монет, ${data.rewards.dust} пыли, ${data.rewards.rating} рейтинга`);
+                            }
                             tg?.sendData(JSON.stringify({ 
                                 action: 'battle_result', 
                                 result: 'lose' 
@@ -692,59 +719,78 @@
             const attackerEl = document.querySelector(`[data-card-id="${attackerId}"]`);
             const defenderEl = document.querySelector(`[data-card-id="${defenderId}"]`);
 
-            if (!attackerEl || !defenderEl) return;
-
-            const attackColor = isPlayerAttacker ? '#4ecdc4' : '#ff6b6b';
-
-            // Анимация атакующего
-            attackerEl.style.transform = 'scale(1.1)';
-            attackerEl.style.boxShadow = `0 0 15px ${attackColor}`;
-            attackerEl.style.transition = 'all 0.1s';
-            await new Promise(resolve => setTimeout(resolve, 100));
-            attackerEl.style.transform = 'scale(1)';
-            attackerEl.style.boxShadow = 'none';
-
-            // Эффект удара
-            const rect = defenderEl.getBoundingClientRect();
-            const slash = document.createElement('div');
-            slash.className = 'slash-effect' + (isCritical ? ' crit-effect' : '');
-            slash.style.left = rect.left + rect.width/2 - 50 + 'px';
-            slash.style.top = rect.top + rect.height/2 - 50 + 'px';
-            document.body.appendChild(slash);
-
-            setTimeout(() => slash.remove(), 300);
-
-            // Анимация защищающегося
-            defenderEl.style.backgroundColor = isCritical ? attackColor : 'rgba(255,255,255,0.2)';
-            defenderEl.style.transform = 'translateX(5px)';
-            await new Promise(resolve => setTimeout(resolve, 100));
-            defenderEl.style.backgroundColor = '';
-            defenderEl.style.transform = 'translateX(0)';
-
-            // Показываем урон
-            const damageEl = document.createElement('div');
-            damageEl.style.position = 'absolute';
-            damageEl.style.color = isCritical ? '#ffd700' : '#ffffff';
-            damageEl.style.fontSize = isCritical ? '28px' : '24px';
-            damageEl.style.fontWeight = 'bold';
-            damageEl.style.zIndex = '1001';
-            damageEl.style.textShadow = '2px 2px 4px black';
-            damageEl.style.pointerEvents = 'none';
-            damageEl.innerHTML = isCritical ? `⚡${damage}⚡` : `-${damage}`;
-
-            const defenderRect = defenderEl.getBoundingClientRect();
-            damageEl.style.left = defenderRect.left + defenderRect.width/2 - 20 + 'px';
-            damageEl.style.top = defenderRect.top + 'px';
-
-            document.body.appendChild(damageEl);
-
-            // Анимация урона
-            for (let i = 0; i < 10; i++) {
-                damageEl.style.opacity = (10 - i) / 10;
-                damageEl.style.top = (defenderRect.top - i*3) + 'px';
-                await new Promise(resolve => setTimeout(resolve, 20));
+            if (!attackerEl || !defenderEl) {
+                console.log('Animation skipped: element not found', {attackerId, defenderId});
+                return;
             }
-            damageEl.remove();
+
+            try {
+                const attackColor = isPlayerAttacker ? '#4ecdc4' : '#ff6b6b';
+
+                // Анимация атакующего
+                attackerEl.style.transform = 'scale(1.1)';
+                attackerEl.style.boxShadow = `0 0 15px ${attackColor}`;
+                attackerEl.style.transition = 'all 0.1s';
+                await new Promise(resolve => setTimeout(resolve, 100));
+                attackerEl.style.transform = 'scale(1)';
+                attackerEl.style.boxShadow = 'none';
+
+                // Эффект удара
+                const rect = defenderEl.getBoundingClientRect();
+                const slash = document.createElement('div');
+                slash.className = 'slash-effect' + (isCritical ? ' crit-effect' : '');
+                slash.style.position = 'fixed';
+                slash.style.left = (rect.left + rect.width/2 - 50) + 'px';
+                slash.style.top = (rect.top + rect.height/2 - 50) + 'px';
+                slash.style.width = '100px';
+                slash.style.height = '100px';
+                slash.style.borderRadius = '50%';
+                slash.style.background = isCritical ? 
+                    'radial-gradient(circle, rgba(255,215,0,0.9) 0%, rgba(255,215,0,0) 70%)' : 
+                    'radial-gradient(circle, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0) 70%)';
+                slash.style.animation = 'slash 0.3s ease-out';
+                slash.style.pointerEvents = 'none';
+                slash.style.zIndex = '1000';
+                document.body.appendChild(slash);
+
+                setTimeout(() => slash.remove(), 300);
+
+                // Анимация защищающегося
+                defenderEl.style.backgroundColor = isCritical ? attackColor : 'rgba(255,255,255,0.2)';
+                defenderEl.style.transform = 'translateX(5px)';
+                await new Promise(resolve => setTimeout(resolve, 100));
+                defenderEl.style.backgroundColor = '';
+                defenderEl.style.transform = 'translateX(0)';
+
+                // Показываем урон
+                const damageEl = document.createElement('div');
+                damageEl.style.position = 'fixed';
+                damageEl.style.color = isCritical ? '#ffd700' : '#ffffff';
+                damageEl.style.fontSize = isCritical ? '28px' : '24px';
+                damageEl.style.fontWeight = 'bold';
+                damageEl.style.zIndex = '1001';
+                damageEl.style.textShadow = '2px 2px 4px black';
+                damageEl.style.pointerEvents = 'none';
+                damageEl.innerHTML = isCritical ? `⚡${damage}⚡` : `-${damage}`;
+
+                const defenderRect = defenderEl.getBoundingClientRect();
+                damageEl.style.left = (defenderRect.left + defenderRect.width/2 - 20) + 'px';
+                damageEl.style.top = defenderRect.top + 'px';
+
+                document.body.appendChild(damageEl);
+
+                // Анимация урона
+                for (let i = 0; i < 10; i++) {
+                    damageEl.style.opacity = (10 - i) / 10;
+                    damageEl.style.top = (defenderRect.top - i*3) + 'px';
+                    await new Promise(resolve => setTimeout(resolve, 20));
+                }
+                damageEl.remove();
+
+            } catch (error) {
+                console.error('Animation error:', error);
+                // Не прерываем основной поток если анимация не удалась
+            }
         }
 
         // Функция для отображения наград

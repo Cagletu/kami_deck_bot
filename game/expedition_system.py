@@ -91,18 +91,9 @@ class ExpeditionManager:
         return active, uncollected
 
     @staticmethod
-    async def get_expeditions_info(session, user_id):
+    async def get_uncollected_expeditions_info(session, user_id):
 
         now = datetime.now()
-
-        active = await session.execute(
-            select(Expedition)
-            .where(
-                Expedition.user_id == user_id,
-                Expedition.status == ExpeditionStatus.ACTIVE,
-                Expedition.ends_at > now
-            )
-        )
 
         uncollected = await session.execute(
             select(Expedition)
@@ -113,7 +104,7 @@ class ExpeditionManager:
             )
         )
 
-        return active.scalars().all(), uncollected.scalars().all()
+        return uncollected.scalars().all()
 
     @staticmethod
     async def calculate_rewards(

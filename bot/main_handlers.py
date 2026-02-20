@@ -56,7 +56,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
                 first_name=message.from_user.first_name,
                 last_name=message.from_user.last_name)
 
-        active, uncollected = await ExpeditionManager.get_expeditions_info(session, user.id)
+        uncollected = await ExpeditionManager.get_uncollected_expeditions_info(session, user.id)
 
         welcome_text = f"""
 🎮 <b>Добро пожаловать в Kami Deck</b>, {message.from_user.first_name}!
@@ -94,7 +94,7 @@ async def cmd_profile(message: types.Message):
         async with AsyncSessionLocal() as session:
             user = await get_user_or_create(session, message.from_user.id)
 
-        active, uncollected = await ExpeditionManager.get_expeditions_info(session, user.id)
+        uncollected = await ExpeditionManager.get_uncollected_expeditions_info(session, user.id)
 
         total_battles = user.arena_wins + user.arena_losses
         win_rate = (user.arena_wins / total_battles *
