@@ -255,63 +255,71 @@ async def handle_webapp_data(message: types.Message):
             result = data.get('result')
             rewards = data.get('rewards', {})
 
+            # ВАЖНО: если rewards пустые, используем стандартные
+            if not rewards:
+                rewards = {
+                    'win': {'coins': 50, 'dust': 50, 'rating': 20},
+                    'lose': {'coins': 25, 'dust': 25, 'rating': -15}
+                }.get(result, {})
+
             logger.info(f"Battle result: {result}, rewards: {rewards}")
 
             async with AsyncSessionLocal() as session:
                 user = await get_user_or_create(session, message.from_user.id)
 
-                # Начисляем награды
-                old_rating = user.arena_rating
-                old_coins = user.coins
-                old_dust = user.dust
+                # Сохраняем старые значения для отчета
+                old_stats = {
+                    'wins': user.arena_wins,
+                    'losses': user.arena_losses,
+                    'rating': user.arena_rating,
+                    'coins': user.coins,
+                    'dust': user.dust
+                }
 
+                # Начисляем награды
                 if result == 'win':
                     user.arena_wins += 1
                     user.arena_rating += rewards.get('rating', 20)
-                    user.coins += rewards.get('coins', 150)
-                    user.dust += rewards.get('dust', 25)
-
-                    await message.answer(
-                        f"🎉 <b>ПОБЕДА!</b>\n\n"
-                        f"💰 Монеты: {old_coins} → {user.coins} (+{rewards.get('coins', 150)})\n"
-                        f"✨ Пыль: {old_dust} → {user.dust} (+{rewards.get('dust', 25)})\n"
-                        f"📈 Рейтинг: {old_rating} → {user.arena_rating} (+{rewards.get('rating', 20)})"
-                    )
+                    user.coins += rewards.get('coins', 50)
+                    user.dust += rewards.get('dust', 50)
                 elif result == 'lose':
                     user.arena_losses += 1
-                    rating_change = rewards.get('rating', -5)
-                    user.arena_rating = max(0, user.arena_rating + rating_change)  # rating_change отрицательный
-                    user.coins += rewards.get('coins', 50)
-                    user.dust += rewards.get('dust', 10)
+                    rating_change = rewards.get('rating', -15)
+                    user.arena_rating = max(0, user.arena_rating + rating_change)
+                    user.coins += rewards.get('coins', 25)
+                    user.dust += rewards.get('dust', 25)
 
-                    await message.answer(
-                        f"😔 <b>ПОРАЖЕНИЕ</b>\n\n"
-                        f"💰 Монеты: {old_coins} → {user.coins} (+{rewards.get('coins', 50)})\n"
-                        f"✨ Пыль: {old_dust} → {user.dust} (+{rewards.get('dust', 10)})\n"
-                        f"📈 Рейтинг: {old_rating} → {user.arena_rating} ({rating_change})"
-                    )
-
-                await session.commit()
-
-                # Сохраняем результат битвы в БД
+                # Сохраняем битву в БД
                 battle_data = await battle_storage.get_battle(battle_id) if battle_id else None
                 if battle_data:
                     db_battle = DBArenaBattle(
                         attacker_id=user.id,
                         defender_id=battle_data.get("opponent_id") or -1,
-                        attacker_deck=[c["user_card_id"] for c in battle_data.get("player_cards", [])],
-                        defender_deck=[c["user_card_id"] for c in battle_data.get("enemy_cards", []) if c["user_card_id"] > 0],
+                        attacker_deck=[c.get("user_card_id") for c in battle_data.get("player_cards", []) if c.get("user_card_id", 0) > 0],
+                        defender_deck=[c.get("user_card_id") for c in battle_data.get("enemy_cards", []) if c.get("user_card_id", 0) > 0],
                         rounds=battle_data.get("turn", 0),
                         winner_id=user.id if result == 'win' else None,
                         result="attacker_win" if result == 'win' else "defender_win",
                         attacker_rating_change=rewards.get('rating', 20) if result == 'win' else rating_change,
-                        attacker_reward_coins=rewards.get('coins', 150) if result == 'win' else rewards.get('coins', 50),
-                        attacker_reward_dust=rewards.get('dust', 25) if result == 'win' else rewards.get('dust', 10),
+                        attacker_reward_coins=rewards.get('coins', 50) if result == 'win' else rewards.get('coins', 25),
+                        attacker_reward_dust=rewards.get('dust', 50) if result == 'win' else rewards.get('dust', 25),
                         ended_at=datetime.now()
                     )
                     session.add(db_battle)
-                    await session.commit()
-                    await session.refresh(user)
+
+                await session.commit()
+                await session.refresh(user)
+
+                # Отправляем подтверждение
+                await message.answer(
+                    f"{'🎉' if result == 'win' else '😔'} <b>БИТВА ЗАВЕРШЕНА!</b>\n\n"
+                    f"📊 Статистика:\n"
+                    f"├ Побед: {old_stats['wins']} → {user.arena_wins}\n"
+                    f"├ Поражений: {old_stats['losses']} → {user.arena_losses}\n"
+                    f"├ Рейтинг: {old_stats['rating']} → {user.arena_rating}\n"
+                    f"├ Монеты: {old_stats['coins']} → {user.coins}\n"
+                    f"└ Пыль: {old_stats['dust']} → {user.dust}"
+                )
 
                 # Удаляем битву из Redis
                 if battle_id:

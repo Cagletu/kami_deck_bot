@@ -11,9 +11,9 @@ import logging
 from database.models.user import User
 from database.models.user_card import UserCard
 from database.models.card import Card
-from database.crud_cards import get_user_card_detail, toggle_favorite, toggle_in_deck, upgrade_user_card
 from game.upgrade_calculator import get_upgrade_cost
 from game.duplicate_system import check_for_duplicate, process_duplicate
+from game.expedition_system import get_active_expeditions, ExpeditionManager
 from sqlalchemy import func, and_
 
 from sqlalchemy import select
@@ -56,6 +56,8 @@ async def cmd_start(message: types.Message, state: FSMContext):
                 first_name=message.from_user.first_name,
                 last_name=message.from_user.last_name)
 
+        active, uncollected = await ExpeditionManager.get_active_expeditions(session, user.id)
+
         welcome_text = f"""
 🎮 <b>Добро пожаловать в Kami Deck</b>, {message.from_user.first_name}!
 
@@ -68,7 +70,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
 <b>🏆 Статистика:</b>
 ⚔️ Рейтинг: <code>{user.arena_rating}</code>
 📈 Побед/Поражений: <code>{user.arena_wins}/{user.arena_losses}</code>
-🏕️ Слотов экспедиций: <code>{user.expeditions_slots}</code>
+🏕️ Несобранных наград экспедиций: <code>{len(uncollected)}</code>
 
 <b>🎯 Доступные команды:</b>
 /profile - Ваш профиль
@@ -92,6 +94,8 @@ async def cmd_profile(message: types.Message):
         async with AsyncSessionLocal() as session:
             user = await get_user_or_create(session, message.from_user.id)
 
+        active, uncollected = await ExpeditionManager.get_active_expeditions(session, user.id)
+
         total_battles = user.arena_wins + user.arena_losses
         win_rate = (user.arena_wins / total_battles *
                     100) if total_battles > 0 else 0
@@ -112,7 +116,7 @@ ID: <code>{user.id}</code>
 <b>💰 Ресурсы:</b>
 Монеты💰: <code>{user.coins}</code>
 Пыль✨: <code>{user.dust}</code>
-Слотов экспедиций: <code>{user.expeditions_slots}</code>
+🏕️ Несобранных наград экспедиций: <code>{len(uncollected)}</code>
 
 <b>🃏 Коллекция:</b>
 Всего карт: <code>{user.cards_opened or 0}</code>
@@ -139,13 +143,13 @@ ID: <code>{user.id}</code>
 # ===== COLLECTION =====
 @router.message(Command("collection"))
 async def cmd_collection(message: types.Message, user_id: int = None):
-    
-        # Определяем какой ID использовать
+
+    # Определяем какой ID использовать
     if user_id:
         tg_id = user_id
     else:
         tg_id = message.from_user.id
-        
+
     try:
         async with AsyncSessionLocal() as session:
             user = await get_user_or_create(session, tg_id)
@@ -177,27 +181,24 @@ async def cmd_collection(message: types.Message, user_id: int = None):
 
 @router.message(Command("open_pack"))
 async def cmd_open_pack(message: types.Message):
-        # Определяем какой ID использовать
-        
+    # Определяем какой ID использовать
+
     try:
         async with AsyncSessionLocal() as session:
-            user = await get_user_or_create(
-                session,
-                message.from_user.id,
-                message.from_user.username,
-                message.from_user.first_name,
-                message.from_user.last_name
-            )
+            user = await get_user_or_create(session, message.from_user.id,
+                                            message.from_user.username,
+                                            message.from_user.first_name,
+                                            message.from_user.last_name)
 
             if user.coins < 100:
                 await message.answer(
                     "❌ Недостаточно монет!\n"
                     "💰 Получите ежедневную награду: /daily\n"
-                    "🏕️ Или отправьте персонажей в экспедицию: /expedition"
-                )
+                    "🏕️ Или отправьте персонажей в экспедицию: /expedition")
                 return
 
-            cards, pack_open, new_card_ids = await open_pack(user.id, "common", session)
+            cards, pack_open, new_card_ids = await open_pack(
+                user.id, "common", session)
 
             # Проверяем каждую карту на дубликат
             new_cards = []
@@ -210,7 +211,8 @@ async def cmd_open_pack(message: types.Message):
 
                 if check["is_duplicate"]:
                     # Это дубликат - начисляем пыль
-                    await process_duplicate(session, user.id, card.id, check["dust_earned"])
+                    await process_duplicate(session, user.id, card.id,
+                                            check["dust_earned"])
                     duplicates.append({
                         "card": card,
                         "dust": check["dust_earned"]
@@ -218,16 +220,14 @@ async def cmd_open_pack(message: types.Message):
                     total_dust += check["dust_earned"]
                 else:
                     # Это новая карта - добавляем в коллекцию
-                    user_card = UserCard(
-                        user_id=user.id,
-                        card_id=card.id,
-                        level=1,
-                        current_power=card.base_power,
-                        current_health=card.base_health,
-                        current_attack=card.base_attack,
-                        current_defense=card.base_defense,
-                        source="pack"
-                    )
+                    user_card = UserCard(user_id=user.id,
+                                         card_id=card.id,
+                                         level=1,
+                                         current_power=card.base_power,
+                                         current_health=card.base_health,
+                                         current_attack=card.base_attack,
+                                         current_defense=card.base_defense,
+                                         source="pack")
                     session.add(user_card)
                     new_cards.append(card)
 
@@ -243,23 +243,43 @@ async def cmd_open_pack(message: types.Message):
         if duplicates:
             text += "\n<b>🔄 ДУБЛИКАТЫ ПРЕВРАЩЕНЫ В ПЫЛЬ✨:</b>\n"
             for dup in duplicates:
-                emoji = {'E':'⚪','D':'🟢','C':'⚡','B':'💫','A':'🔮','S':'⭐','ASS':'✨','SSS':'🏆'}.get(dup['card'].rarity,'🃏')
+                emoji = {
+                    'E': '⚪',
+                    'D': '🟢',
+                    'C': '⚡',
+                    'B': '💫',
+                    'A': '🔮',
+                    'S': '⭐',
+                    'ASS': '✨',
+                    'SSS': '🏆'
+                }.get(dup['card'].rarity, '🃏')
                 text += f"{emoji} {dup['card'].card_name} [{dup['card'].rarity}] → +{dup['dust']}✨\n"
             text += f"\n<b>✨ Всего получено пыли:</b> {total_dust}✨\n"
 
         if new_cards:
             text += "\n<b>🎉 НОВЫЕ КАРТЫ В КОЛЛЕКЦИИ:</b>\n"
             for card in new_cards:
-                emoji = {'E':'⚪','D':'🟢','C':'⚡','B':'💫','A':'🔮','S':'⭐','ASS':'✨','SSS':'🏆'}.get(card.rarity,'🃏')
+                emoji = {
+                    'E': '⚪',
+                    'D': '🟢',
+                    'C': '⚡',
+                    'B': '💫',
+                    'A': '🔮',
+                    'S': '⭐',
+                    'ASS': '✨',
+                    'SSS': '🏆'
+                }.get(card.rarity, '🃏')
                 text += f"{emoji} <b>{card.card_name}</b> [{card.rarity}]\n"
 
         if pack_open.guaranteed_rarity:
             text += f"\n🎁 <b>ГАРАНТИЯ!</b> Вам выпала {pack_open.guaranteed_rarity} карта!"
 
         # Отправляем первую карту (если есть новые) или первую из дубликатов
-        first_card = new_cards[0] if new_cards else (duplicates[0]["card"] if duplicates else None)
+        first_card = new_cards[0] if new_cards else (
+            duplicates[0]["card"] if duplicates else None)
         if first_card:
-            await message.answer_photo(photo=first_card.original_url, caption=text)
+            await message.answer_photo(photo=first_card.original_url,
+                                       caption=text)
 
         # Отправляем остальные карты
         all_cards = new_cards + [d["card"] for d in duplicates]
@@ -268,7 +288,9 @@ async def cmd_open_pack(message: types.Message):
             for card in all_cards[1:]:
                 is_new = card in new_cards
                 caption = f"{'✨ НОВАЯ' if is_new else '🔄 ДУБЛИКАТ'} {card.card_name} [{card.rarity}]"
-                media_group.append(types.InputMediaPhoto(media=card.original_url, caption=caption))
+                media_group.append(
+                    types.InputMediaPhoto(media=card.original_url,
+                                          caption=caption))
 
             if media_group:
                 await message.answer_media_group(media_group)
@@ -279,11 +301,12 @@ async def cmd_open_pack(message: types.Message):
         logger.exception(f"Ошибка открытия пачки: {e}")
         await message.answer("❌ Произошла ошибка. Попробуйте позже.")
 
+
 # ===== DAILY =====
 @router.message(Command("daily"))
 async def cmd_daily(message: types.Message):
-        # Определяем какой ID использовать
-        
+    # Определяем какой ID использовать
+
     try:
         async with AsyncSessionLocal() as session:
             user = await get_user_or_create(session, message.from_user.id)
@@ -329,8 +352,8 @@ async def cmd_daily(message: types.Message):
 # ===== HELP =====
 @router.message(Command("help"))
 async def cmd_help(message: types.Message):
-        # Определяем какой ID использовать
-        
+    # Определяем какой ID использовать
+
     try:
         help_text = """
 <b>❓ ПОМОЩЬ ПО ANIME CARDS GAME</b>
@@ -398,7 +421,6 @@ async def cancel_any(message: types.Message, state: FSMContext):
 @router.callback_query(F.data == "collection_by_rarity")
 async def collection_by_rarity(callback: types.CallbackQuery):
 
-
     try:
         await callback.message.edit_text(
             "<b>Выберите редкость для просмотра:</b>",
@@ -411,7 +433,6 @@ async def collection_by_rarity(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("rarity_"))
 async def show_rarity_collection(callback: types.CallbackQuery):
-        
     """Показать коллекцию карт по редкости"""
     try:
         # Парсим callback_data: rarity_SSS_1 или rarity_SSS
@@ -504,7 +525,7 @@ async def show_rarity_collection(callback: types.CallbackQuery):
             InlineKeyboardButton(text="« К редкостям",
                                  callback_data="collection_by_rarity"),
             InlineKeyboardButton(text="🏠 В меню",
-                                 callback_data="back_to_collection")
+                                 callback_data="back_to_collection_menu")
         ])
 
         await callback.message.edit_text(
@@ -516,36 +537,23 @@ async def show_rarity_collection(callback: types.CallbackQuery):
         await callback.answer("❌ Произошла ошибка.")
 
 
-@router.callback_query(F.data == "back_to_collection")
-async def back_to_collection(callback: types.CallbackQuery):
-        
-    try:
-        await cmd_collection(callback.message, callback.from_user.id)
-        await callback.answer()
-    except Exception as e:
-        logger.exception(f"Ошибка back_to_collection: {e}")
-        await callback.answer("❌ Произошла ошибка.")
-
-
 @router.callback_query(F.data == "open_pack")
 async def cb_open_pack(callback: types.CallbackQuery):
-        
+
     try:
         async with AsyncSessionLocal() as session:
-            user = await get_user_or_create(
-                session,
-                callback.from_user.id,
-                callback.from_user.username,
-                callback.from_user.first_name,
-                callback.from_user.last_name
-            )
+            user = await get_user_or_create(session, callback.from_user.id,
+                                            callback.from_user.username,
+                                            callback.from_user.first_name,
+                                            callback.from_user.last_name)
 
             if user.coins < 100:
                 await callback.answer("Недостаточно монет!", show_alert=True)
                 return
 
             # Открываем пачку
-            cards, pack_open, new_card_ids = await open_pack(user.id, "common", session)
+            cards, pack_open, new_card_ids = await open_pack(
+                user.id, "common", session)
 
             # Проверяем дубликаты
             new_cards = []
@@ -556,23 +564,22 @@ async def cb_open_pack(callback: types.CallbackQuery):
                 check = await check_for_duplicate(session, user.id, card.id)
 
                 if check["is_duplicate"]:
-                    await process_duplicate(session, user.id, card.id, check["dust_earned"])
+                    await process_duplicate(session, user.id, card.id,
+                                            check["dust_earned"])
                     duplicates.append({
                         "card": card,
                         "dust": check["dust_earned"]
                     })
                     total_dust += check["dust_earned"]
                 else:
-                    user_card = UserCard(
-                        user_id=user.id,
-                        card_id=card.id,
-                        level=1,
-                        current_power=card.base_power,
-                        current_health=card.base_health,
-                        current_attack=card.base_attack,
-                        current_defense=card.base_defense,
-                        source="pack"
-                    )
+                    user_card = UserCard(user_id=user.id,
+                                         card_id=card.id,
+                                         level=1,
+                                         current_power=card.base_power,
+                                         current_health=card.base_health,
+                                         current_attack=card.base_attack,
+                                         current_defense=card.base_defense,
+                                         source="pack")
                     session.add(user_card)
                     new_cards.append(card)
 
@@ -582,32 +589,50 @@ async def cb_open_pack(callback: types.CallbackQuery):
             await session.refresh(user)
 
         # Формируем текст
-        text = (
-            f"<b>📦 ВЫ ОТКРЫЛИ ПАЧКУ КАРТ!</b>\n\n"
-            f"💰 Потрачено: <code>100</code> монет\n"
-            f"💰 Осталось: <code>{user.coins}</code> монет\n"
-        )
+        text = (f"<b>📦 ВЫ ОТКРЫЛИ ПАЧКУ КАРТ!</b>\n\n"
+                f"💰 Потрачено: <code>100</code> монет\n"
+                f"💰 Осталось: <code>{user.coins}</code> монет\n")
 
         if duplicates:
             text += "\n<b>🔄 ДУБЛИКАТЫ ПРЕВРАЩЕНЫ В ПЫЛЬ ✨:</b>\n"
             for dup in duplicates:
-                emoji = {'E':'⚪','D':'🟢','C':'⚡','B':'💫','A':'🔮','S':'⭐','ASS':'✨','SSS':'🏆'}.get(dup['card'].rarity,'🃏')
+                emoji = {
+                    'E': '⚪',
+                    'D': '🟢',
+                    'C': '⚡',
+                    'B': '💫',
+                    'A': '🔮',
+                    'S': '⭐',
+                    'ASS': '✨',
+                    'SSS': '🏆'
+                }.get(dup['card'].rarity, '🃏')
                 text += f"{emoji} {dup['card'].card_name} [{dup['card'].rarity}] → +{dup['dust']}✨\n"
             text += f"\n<b>✨ Всего получено пыли:</b> {total_dust}✨\n"
 
         if new_cards:
             text += "\n<b>🎉 НОВЫЕ КАРТЫ В КОЛЛЕКЦИИ:</b>\n"
             for card in new_cards:
-                emoji = {'E':'⚪','D':'🟢','C':'⚡','B':'💫','A':'🔮','S':'⭐','ASS':'✨','SSS':'🏆'}.get(card.rarity,'🃏')
+                emoji = {
+                    'E': '⚪',
+                    'D': '🟢',
+                    'C': '⚡',
+                    'B': '💫',
+                    'A': '🔮',
+                    'S': '⭐',
+                    'ASS': '✨',
+                    'SSS': '🏆'
+                }.get(card.rarity, '🃏')
                 text += f"{emoji} <b>{card.card_name}</b> [{card.rarity}]\n"
 
         if pack_open.guaranteed_rarity:
             text += f"\n🎁 <b>ГАРАНТИЯ!</b> Вам выпала {pack_open.guaranteed_rarity} карта!"
 
         # Первая карта
-        first_card = new_cards[0] if new_cards else (duplicates[0]["card"] if duplicates else None)
+        first_card = new_cards[0] if new_cards else (
+            duplicates[0]["card"] if duplicates else None)
         if first_card:
-            await callback.message.answer_photo(photo=first_card.original_url, caption=text)
+            await callback.message.answer_photo(photo=first_card.original_url,
+                                                caption=text)
 
         # Остальные карты
         all_cards = new_cards + [d["card"] for d in duplicates]
@@ -616,7 +641,9 @@ async def cb_open_pack(callback: types.CallbackQuery):
             for card in all_cards[1:]:
                 is_new = card in new_cards
                 caption = f"{'✨ НОВАЯ' if is_new else '🔄 ДУБЛИКАТ'} {card.card_name} [{card.rarity}]"
-                media_group.append(types.InputMediaPhoto(media=card.original_url, caption=caption))
+                media_group.append(
+                    types.InputMediaPhoto(media=card.original_url,
+                                          caption=caption))
 
             if media_group:
                 await callback.message.answer_media_group(media_group)
@@ -627,14 +654,13 @@ async def cb_open_pack(callback: types.CallbackQuery):
         await callback.answer(str(e), show_alert=True)
     except Exception as e:
         logger.exception(f"Ошибка открытия пачки: {e}")
-        await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
-
-
+        await callback.answer("❌ Произошла ошибка. Попробуйте позже.",
+                              show_alert=True)
 
 
 @router.callback_query(F.data.startswith("col_page:"))
 async def cb_collection_page(callback: CallbackQuery):
-        
+
     try:
         data_parts = callback.data.split(":")
         page = int(data_parts[1])
@@ -674,7 +700,6 @@ async def cb_collection_page(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("favorite_"))
 async def toggle_favorite_handler(callback: types.CallbackQuery):
-        
     """Добавить/убрать из избранного"""
     try:
         card_id = int(callback.data.replace("favorite_", ""))
@@ -708,7 +733,6 @@ async def toggle_favorite_handler(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("deck_"))
 async def toggle_deck_handler(callback: types.CallbackQuery):
-        
     """Добавить/убрать из колоды"""
     try:
         card_id = int(callback.data.replace("deck_", ""))
@@ -760,7 +784,6 @@ async def toggle_deck_handler(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("upgrade_"))
 async def upgrade_card(callback: types.CallbackQuery):
-        
     """Улучшить карту"""
     try:
         card_id = int(callback.data.replace("upgrade_", ""))
@@ -770,15 +793,15 @@ async def upgrade_card(callback: types.CallbackQuery):
             # Получаем пользователя
             user = await get_user_or_create(session, callback.from_user.id)
             if not user:
-                await callback.answer("❌ Пользователь не найден", show_alert=True)
+                await callback.answer("❌ Пользователь не найден",
+                                      show_alert=True)
                 return
 
             # Получаем карту
             result = await session.execute(
-                select(UserCard, Card)
-                .join(Card, UserCard.card_id == Card.id)
-                .where(UserCard.id == card_id)
-            )
+                select(UserCard, Card).join(
+                    Card,
+                    UserCard.card_id == Card.id).where(UserCard.id == card_id))
             data = result.first()
             if not data:
                 await callback.answer("Карта не найдена", show_alert=True)
@@ -786,11 +809,13 @@ async def upgrade_card(callback: types.CallbackQuery):
 
             user_card, card = data
             if user_card.user_id != user.id:
-                await callback.answer("❌ Карта не принадлежит вам", show_alert=True)
+                await callback.answer("❌ Карта не принадлежит вам",
+                                      show_alert=True)
                 return
 
             if user_card.level >= 100:
-                await callback.answer("Карта уже максимального уровня!", show_alert=True)
+                await callback.answer("Карта уже максимального уровня!",
+                                      show_alert=True)
                 return
 
             # Сохраняем старые статы
@@ -806,7 +831,9 @@ async def upgrade_card(callback: types.CallbackQuery):
             from game.upgrade_calculator import get_upgrade_cost, calculate_stats_for_level
             upgrade_cost = get_upgrade_cost(card, user_card.level)
             if user.dust < upgrade_cost:
-                await callback.answer(f"❌ Не хватает пыли ✨! Нужно: {upgrade_cost} ✨", show_alert=True)
+                await callback.answer(
+                    f"❌ Не хватает пыли ✨! Нужно: {upgrade_cost} ✨",
+                    show_alert=True)
                 return
 
             # Улучшаем
@@ -833,7 +860,8 @@ async def upgrade_card(callback: types.CallbackQuery):
             next_ten_bonus = ((user_card.level // 10) + 1) * 10
             levels_to_bonus = next_ten_bonus - user_card.level
             ten_level_progress = user_card.level % 10 or 10
-            progress_bar = "█" * ten_level_progress + "░" * (10 - ten_level_progress)
+            progress_bar = "█" * ten_level_progress + "░" * (
+                10 - ten_level_progress)
 
             text = f"""
 <b>✨ УЛУЧШЕНИЕ КАРТЫ</b>
@@ -860,18 +888,19 @@ async def upgrade_card(callback: types.CallbackQuery):
             from bot.keyboards import upgrade_card_keyboard
             keyboard = upgrade_card_keyboard(card_id)
 
-            await callback.message.edit_caption(caption=text, reply_markup=keyboard)
-            await callback.answer(f"✨ Уровень повышен! (+{diff_power} силы)", show_alert=False)
+            await callback.message.edit_caption(caption=text,
+                                                reply_markup=keyboard)
+            await callback.answer(f"✨ Уровень повышен! (+{diff_power} силы)",
+                                  show_alert=False)
 
     except Exception as e:
         logger.exception(f"Ошибка upgrade_card: {e}")
         await callback.answer("❌ Произошла ошибка", show_alert=True)
 
 
-
 @router.callback_query(F.data == "profile")
 async def callback_profile(callback: types.CallbackQuery):
-        
+
     try:
         async with AsyncSessionLocal() as session:
             user = await get_user_or_create(session, callback.from_user.id)
@@ -925,7 +954,6 @@ ID: <code>{user.id}</code>
 
 @router.callback_query(F.data.startswith("5x_upgrade_"))
 async def upgrade_card_5x(callback: types.CallbackQuery):
-        
     """Улучшить карту 5 раз"""
     try:
         card_id = int(callback.data.replace("5x_upgrade_", ""))
@@ -934,10 +962,9 @@ async def upgrade_card_5x(callback: types.CallbackQuery):
             user = await get_user_or_create(session, callback.from_user.id)
 
             result = await session.execute(
-                select(UserCard, Card)
-                .join(Card, UserCard.card_id == Card.id)
-                .where(UserCard.id == card_id)
-            )
+                select(UserCard, Card).join(
+                    Card,
+                    UserCard.card_id == Card.id).where(UserCard.id == card_id))
             data = result.first()
             if not data:
                 await callback.answer("❌ Карта не найдена", show_alert=True)
@@ -963,7 +990,9 @@ async def upgrade_card_5x(callback: types.CallbackQuery):
                 total_cost += get_upgrade_cost(card, user_card.level + i)
 
             if user.dust < total_cost:
-                await callback.answer(f"❌ Не хватает пыли ✨! Нужно: {total_cost} ✨", show_alert=True)
+                await callback.answer(
+                    f"❌ Не хватает пыли ✨! Нужно: {total_cost} ✨",
+                    show_alert=True)
                 return
 
             # Применяем улучшения
@@ -996,7 +1025,8 @@ async def upgrade_card_5x(callback: types.CallbackQuery):
             next_ten_bonus = ((user_card.level // 10) + 1) * 10
             levels_to_bonus = next_ten_bonus - user_card.level
             ten_level_progress = user_card.level % 10 or 10
-            progress_bar = "█" * ten_level_progress + "░" * (10 - ten_level_progress)
+            progress_bar = "█" * ten_level_progress + "░" * (
+                10 - ten_level_progress)
 
             text = f"""
 <b>✨ УЛУЧШЕНИЕ КАРТЫ ×{upgrades_done}</b>
@@ -1022,8 +1052,10 @@ async def upgrade_card_5x(callback: types.CallbackQuery):
             from bot.keyboards import upgrade_card_keyboard
             keyboard = upgrade_card_keyboard(card_id)
 
-            await callback.message.edit_caption(caption=text, reply_markup=keyboard)
-            await callback.answer(f"✨ Карта улучшена {upgrades_done} раз!", show_alert=False)
+            await callback.message.edit_caption(caption=text,
+                                                reply_markup=keyboard)
+            await callback.answer(f"✨ Карта улучшена {upgrades_done} раз!",
+                                  show_alert=False)
 
     except Exception as e:
         logger.exception(f"Ошибка upgrade_5x: {e}")
@@ -1032,7 +1064,6 @@ async def upgrade_card_5x(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "collection_by_anime")
 async def collection_by_anime(callback: types.CallbackQuery):
-        
     """Показать коллекцию, сгруппированную по аниме"""
     try:
         async with AsyncSessionLocal() as session:
@@ -1040,33 +1071,34 @@ async def collection_by_anime(callback: types.CallbackQuery):
 
             # Получаем все карты пользователя с группировкой по аниме
             result = await session.execute(
-                select(Card.anime_name, func.count(UserCard.id))
-                .join(UserCard, Card.id == UserCard.card_id)
-                .where(UserCard.user_id == user.id)
-                .group_by(Card.anime_name)
-                .order_by(func.count(UserCard.id).desc())
-                .limit(20)
-            )
+                select(Card.anime_name, func.count(UserCard.id)).join(
+                    UserCard, Card.id == UserCard.card_id).where(
+                        UserCard.user_id == user.id).group_by(
+                            Card.anime_name).order_by(
+                                func.count(UserCard.id).desc()).limit(20))
             anime_stats = result.all()
 
             if not anime_stats:
                 await callback.message.edit_text(
                     "📭 <b>У вас пока нет карт</b>\n\nОткройте пачку: /open_pack",
-                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text="« Назад", callback_data="back_to_collection_menu")]
-                    ])
-                )
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                        InlineKeyboardButton(
+                            text="« Назад",
+                            callback_data="back_to_collection_menu")
+                    ]]))
                 await callback.answer()
                 return
 
             text = "<b>🎌 КОЛЛЕКЦИЯ ПО АНИМЕ</b>\n\n"
             for anime, count in anime_stats:
-                anime_name = anime[:30] + "..." if anime and len(anime) > 30 else (anime or "Без аниме")
+                anime_name = anime[:30] + "..." if anime and len(
+                    anime) > 30 else (anime or "Без аниме")
                 text += f"📺 <b>{anime_name}</b> — {count} карт\n"
 
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="« Назад", callback_data="back_to_collection_menu")]
-            ])
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="« Назад",
+                                     callback_data="back_to_collection_menu")
+            ]])
 
             await callback.message.edit_text(text, reply_markup=keyboard)
             await callback.answer()
@@ -1078,34 +1110,28 @@ async def collection_by_anime(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "collection_favorites")
 async def collection_favorites(callback: types.CallbackQuery):
-        
     """Показать избранные карты"""
     try:
         async with AsyncSessionLocal() as session:
             user = await get_user_or_create(session, callback.from_user.id)
 
             result = await session.execute(
-                select(UserCard, Card)
-                .join(Card, UserCard.card_id == Card.id)
-                .where(
-                    and_(
-                        UserCard.user_id == user.id,
-                        UserCard.is_favorite == True
-                    )
-                )
-                .order_by(Card.rarity.desc())
-                .limit(20)
-            )
+                select(UserCard,
+                       Card).join(Card, UserCard.card_id == Card.id).where(
+                           and_(UserCard.user_id == user.id,
+                                UserCard.is_favorite == True)).order_by(
+                                    Card.rarity.desc()).limit(20))
             cards = result.all()
 
             if not cards:
                 await callback.message.edit_text(
                     "⭐ <b>У вас нет избранных карт</b>\n\n"
                     "Добавьте карты в избранное при просмотре",
-                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text="« Назад", callback_data="back_to_collection_menu")]
-                    ])
-                )
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                        InlineKeyboardButton(
+                            text="« Назад",
+                            callback_data="back_to_collection")
+                    ]]))
                 await callback.answer()
                 return
 
@@ -1121,13 +1147,20 @@ async def collection_favorites(callback: types.CallbackQuery):
             keyboard = []
             view_row = []
             for idx, cid in enumerate(card_ids, 1):
-                view_row.append(InlineKeyboardButton(text=f"🔍 {idx}", callback_data=f"view_card_{cid}"))
+                view_row.append(
+                    InlineKeyboardButton(text=f"🔍 {idx}",
+                                         callback_data=f"view_card_{cid}"))
             if view_row:
                 keyboard.append(view_row)
 
-            keyboard.append([InlineKeyboardButton(text="« Назад", callback_data="back_to_collection_menu")])
+            keyboard.append([
+                InlineKeyboardButton(text="« Назад",
+                                     callback_data="back_to_collection_menu")
+            ])
 
-            await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
+            await callback.message.edit_text(
+                text,
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
             await callback.answer()
 
     except Exception as e:
@@ -1137,39 +1170,33 @@ async def collection_favorites(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "collection_in_deck")
 async def collection_in_deck(callback: types.CallbackQuery):
-        
     """Показать карты в колоде"""
     try:
         async with AsyncSessionLocal() as session:
             user = await get_user_or_create(session, callback.from_user.id)
 
             result = await session.execute(
-                select(UserCard, Card)
-                .join(Card, UserCard.card_id == Card.id)
-                .where(
-                    and_(
-                        UserCard.user_id == user.id,
-                        UserCard.is_in_deck == True
-                    )
-                )
-                .order_by(Card.rarity.desc())
-            )
+                select(UserCard,
+                       Card).join(Card, UserCard.card_id == Card.id).where(
+                           and_(UserCard.user_id == user.id,
+                                UserCard.is_in_deck == True)).order_by(
+                                    Card.rarity.desc()))
             cards = result.all()
 
             if not cards:
                 await callback.message.edit_text(
                     "⚔️ <b>В вашей колоде нет карт</b>\n\n"
                     "Добавьте карты в колоду при просмотре",
-                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text="« Назад", callback_data="back_to_collection")]
-                    ])
-                )
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                        InlineKeyboardButton(
+                            text="« Назад", callback_data="back_to_collection_menu")
+                    ]]))
                 await callback.answer()
                 return
 
             text = "<b>⚔️ КАРТЫ В КОЛОДЕ</b>\n\n"
             card_ids = []
-            
+
             for i, (user_card, card) in enumerate(cards, 1):
                 text += f"{i}. <b>{card.card_name}</b> [{card.rarity}] Ур.{user_card.level}\n"
                 text += f"   💪 {user_card.current_power} | ⚔️ {user_card.current_attack} | 🛡️ {user_card.current_defense}\n\n"
@@ -1178,13 +1205,20 @@ async def collection_in_deck(callback: types.CallbackQuery):
             keyboard = []
             view_row = []
             for idx, cid in enumerate(card_ids, 1):
-                view_row.append(InlineKeyboardButton(text=f"🔍 {idx}", callback_data=f"view_card_{cid}"))
+                view_row.append(
+                    InlineKeyboardButton(text=f"🔍 {idx}",
+                                         callback_data=f"view_card_{cid}"))
             if view_row:
                 keyboard.append(view_row)
 
-            keyboard.append([InlineKeyboardButton(text="« Назад", callback_data="back_to_collection")])
+            keyboard.append([
+                InlineKeyboardButton(text="« Назад",
+                                     callback_data="back_to_collection_menu")
+            ])
 
-            await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
+            await callback.message.edit_text(
+                text,
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
             await callback.answer()
 
     except Exception as e:
@@ -1194,7 +1228,6 @@ async def collection_in_deck(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "collection_stats")
 async def collection_stats(callback: types.CallbackQuery):
-        
     """Показать расширенную статистику коллекции"""
     try:
         async with AsyncSessionLocal() as session:
@@ -1208,25 +1241,21 @@ async def collection_stats(callback: types.CallbackQuery):
 
             # Подсчет общей силы
             result = await session.execute(
-                select(func.sum(UserCard.current_power))
-                .where(UserCard.user_id == user.id)
+                select(func.sum(
+                    UserCard.current_power)).where(UserCard.user_id == user.id)
             )
             total_power = result.scalar() or 0
 
             # Средний уровень
             result = await session.execute(
-                select(func.avg(UserCard.level))
-                .where(UserCard.user_id == user.id)
-            )
+                select(func.avg(
+                    UserCard.level)).where(UserCard.user_id == user.id))
             avg_level = result.scalar() or 0
 
             # ⭐ Избранные
             favorite_count = await session.scalar(
-                select(func.count(UserCard.id))
-                .where(
-                    UserCard.user_id == user.id,
-                    UserCard.is_favorite == True
-                )
+                select(func.count(UserCard.id)).where(
+                    UserCard.user_id == user.id, UserCard.is_favorite == True)
             ) or 0
 
             # ⚔️ В колоде
@@ -1238,8 +1267,9 @@ async def collection_stats(callback: types.CallbackQuery):
             #         UserCard.is_in_deck == True
             #     )
             # ) or 0
-            logger.info(f"Collection user: tg_id={callback.from_user.id}, db_id={user.id}")
-
+            logger.info(
+                f"Collection user: tg_id={callback.from_user.id}, db_id={user.id}"
+            )
 
             text = f"""
 <b>📊 СТАТИСТИКА КОЛЛЕКЦИИ</b>
@@ -1266,10 +1296,10 @@ async def collection_stats(callback: types.CallbackQuery):
 """
             await callback.message.edit_text(
                 text,
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="« Назад", callback_data="back_to_collection")]
-                ])
-            )
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text="« Назад",
+                                         callback_data="back_to_collection_menu")
+                ]]))
             await callback.answer()
 
     except Exception as e:
@@ -1279,28 +1309,25 @@ async def collection_stats(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "collection_strongest")
 async def collection_strongest(callback: types.CallbackQuery):
-        
     """Показать самые сильные карты"""
     try:
         async with AsyncSessionLocal() as session:
             user = await get_user_or_create(session, callback.from_user.id)
 
             result = await session.execute(
-                select(UserCard, Card)
-                .join(Card, UserCard.card_id == Card.id)
-                .where(UserCard.user_id == user.id)
-                .order_by(UserCard.current_power.desc())
-                .limit(10)
-            )
+                select(UserCard,
+                       Card).join(Card, UserCard.card_id == Card.id).where(
+                           UserCard.user_id == user.id).order_by(
+                               UserCard.current_power.desc()).limit(10))
             cards = result.all()
 
             if not cards:
                 await callback.message.edit_text(
                     "📭 <b>У вас пока нет карт</b>",
-                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text="« Назад", callback_data="back_to_collection")]
-                    ])
-                )
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                        InlineKeyboardButton(
+                            text="« Назад", callback_data="back_to_collection_menu")
+                    ]]))
                 await callback.answer()
                 return
 
@@ -1317,13 +1344,20 @@ async def collection_strongest(callback: types.CallbackQuery):
             keyboard = []
             view_row = []
             for idx, cid in enumerate(card_ids, 1):
-                view_row.append(InlineKeyboardButton(text=f"🔍 {idx}", callback_data=f"view_card_{cid}"))
+                view_row.append(
+                    InlineKeyboardButton(text=f"🔍 {idx}",
+                                         callback_data=f"view_card_{cid}"))
             if view_row:
                 keyboard.append(view_row)
 
-            keyboard.append([InlineKeyboardButton(text="« Назад", callback_data="back_to_collection")])
+            keyboard.append([
+                InlineKeyboardButton(text="« Назад",
+                                     callback_data="back_to_collection_menu")
+            ])
 
-            await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
+            await callback.message.edit_text(
+                text,
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
             await callback.answer()
 
     except Exception as e:
@@ -1340,7 +1374,6 @@ async def collection_strongest(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("view_card_"))
 async def view_card_detail(callback: types.CallbackQuery):
-        
     """Просмотр детальной информации о карте с изображением"""
     try:
         # Проверяем что это точно view_card_, а не что-то другое
@@ -1412,25 +1445,19 @@ async def view_card_detail(callback: types.CallbackQuery):
                                         upgrade_cost=upgrade_cost,
                                         user_dust=user.dust)
 
-        try: 
+        try:
             # Обновляем существующее сообщение
-            await callback.message.edit_media(
-                media=types.InputMediaPhoto(
-                    media=card.original_url,
-                    caption=text
-                ),
-                reply_markup=keyboard
-            )
+            await callback.message.edit_media(media=types.InputMediaPhoto(
+                media=card.original_url, caption=text),
+                                              reply_markup=keyboard)
         except Exception as e:
             logger.warning(f"Не удалось обновить сообщение: {e}")
             # Если не получилось — отправляем новое
-            await callback.message.answer_photo(
-                photo=card.original_url,
-                caption=text,
-                reply_markup=keyboard
-            )
+            await callback.message.answer_photo(photo=card.original_url,
+                                                caption=text,
+                                                reply_markup=keyboard)
 
-        await callback.answer()    
+        await callback.answer()
 
     except Exception as e:
         logger.exception(f"Ошибка view_card_detail: {e}")
@@ -1442,7 +1469,7 @@ async def view_card_detail(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "back_to_main", StateFilter("*"))
 async def cb_back_main(callback: CallbackQuery):
-        
+
     try:
         await callback.message.edit_text("🏠 Главное меню",
                                          reply_markup=main_menu_keyboard())
@@ -1456,8 +1483,20 @@ async def cb_back_main(callback: CallbackQuery):
 async def cb_back_collection(callback: CallbackQuery):
     try:
         await callback.message.edit_text(
-            "🃏 Коллекция", reply_markup=collection_menu_keyboard())
+            "🃏 КОЛЛЕКЦИЯ КАРТ\n🎯 Выберите способ просмотра:",
+            reply_markup=collection_menu_keyboard())
         await callback.answer()
     except Exception as e:
         logger.exception(f"Ошибка cb_back_collection: {e}")
+        await callback.answer("❌ Произошла ошибка.")
+
+
+@router.callback_query(F.data == "back_to_collection")
+async def back_to_collection(callback: types.CallbackQuery):
+
+    try:
+        await cmd_collection(callback.message, callback.from_user.id)
+        await callback.answer()
+    except Exception as e:
+        logger.exception(f"Ошибка back_to_collection: {e}")
         await callback.answer("❌ Произошла ошибка.")

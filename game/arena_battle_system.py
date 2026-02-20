@@ -93,7 +93,7 @@ class ArenaBattle:
     def _calculate_damage(self, attacker: BattleCard, defender: BattleCard) -> Tuple[int, bool]:
         """Расчет урона с учетом критов"""
         # Базовая атака минус защита
-        base_damage = max(1, attacker.attack - defender.defense // 2)
+        base_damage = max(25, attacker.attack - defender.defense // 3)
 
         # Шанс крита (10%)
         is_critical = random.random() < 0.1

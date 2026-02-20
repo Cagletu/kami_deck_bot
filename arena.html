@@ -213,6 +213,27 @@
         .enemy-card .card-image {
             height: 60px;
         }
+
+        @keyframes slash {
+            0% { transform: scale(1); opacity: 0; }
+            50% { transform: scale(1.5); opacity: 1; }
+            100% { transform: scale(1); opacity: 0; }
+        }
+
+        .slash-effect {
+            position: absolute;
+            width: 100px;
+            height: 100px;
+            background: radial-gradient(circle, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0) 70%);
+            border-radius: 50%;
+            pointer-events: none;
+            animation: slash 0.3s ease-out;
+            z-index: 1000;
+        }
+
+        .crit-effect {
+            background: radial-gradient(circle, rgba(255,215,0,0.9) 0%, rgba(255,215,0,0) 70%);
+        }
     </style>
 </head>
 <body>
@@ -397,7 +418,6 @@
                         <span>💪 ${card.power}</span>
                         <span>❤️ ${card.health}/${card.max_health}</span>
                     </div>
-                    <div class="health-bar enemy-health-bar">
                     <div class="health-bar enemy-health-bar">
                         <div class="health-bar-fill enemy-health-bar-fill" style="width: ${healthPercent}%"></div>
                     </div>
@@ -674,7 +694,6 @@
 
             if (!attackerEl || !defenderEl) return;
 
-            // Цвет атаки (синий для игрока, красный для врага)
             const attackColor = isPlayerAttacker ? '#4ecdc4' : '#ff6b6b';
 
             // Анимация атакующего
@@ -684,6 +703,16 @@
             await new Promise(resolve => setTimeout(resolve, 100));
             attackerEl.style.transform = 'scale(1)';
             attackerEl.style.boxShadow = 'none';
+
+            // Эффект удара
+            const rect = defenderEl.getBoundingClientRect();
+            const slash = document.createElement('div');
+            slash.className = 'slash-effect' + (isCritical ? ' crit-effect' : '');
+            slash.style.left = rect.left + rect.width/2 - 50 + 'px';
+            slash.style.top = rect.top + rect.height/2 - 50 + 'px';
+            document.body.appendChild(slash);
+
+            setTimeout(() => slash.remove(), 300);
 
             // Анимация защищающегося
             defenderEl.style.backgroundColor = isCritical ? attackColor : 'rgba(255,255,255,0.2)';
@@ -695,24 +724,24 @@
             // Показываем урон
             const damageEl = document.createElement('div');
             damageEl.style.position = 'absolute';
-            damageEl.style.color = isCritical ? attackColor : '#ffffff';
-            damageEl.style.fontSize = '24px';
+            damageEl.style.color = isCritical ? '#ffd700' : '#ffffff';
+            damageEl.style.fontSize = isCritical ? '28px' : '24px';
             damageEl.style.fontWeight = 'bold';
-            damageEl.style.zIndex = '1000';
+            damageEl.style.zIndex = '1001';
             damageEl.style.textShadow = '2px 2px 4px black';
             damageEl.style.pointerEvents = 'none';
-            damageEl.textContent = `-${damage}${isCritical ? '!' : ''}`;
+            damageEl.innerHTML = isCritical ? `⚡${damage}⚡` : `-${damage}`;
 
-            const rect = defenderEl.getBoundingClientRect();
-            damageEl.style.left = rect.left + rect.width/2 - 20 + 'px';
-            damageEl.style.top = rect.top + 'px';
+            const defenderRect = defenderEl.getBoundingClientRect();
+            damageEl.style.left = defenderRect.left + defenderRect.width/2 - 20 + 'px';
+            damageEl.style.top = defenderRect.top + 'px';
 
             document.body.appendChild(damageEl);
 
             // Анимация урона
             for (let i = 0; i < 10; i++) {
                 damageEl.style.opacity = (10 - i) / 10;
-                damageEl.style.top = (rect.top - i*3) + 'px';
+                damageEl.style.top = (defenderRect.top - i*3) + 'px';
                 await new Promise(resolve => setTimeout(resolve, 20));
             }
             damageEl.remove();
@@ -741,7 +770,7 @@
         }
         
         function closeArena() {
-            if (tg) {
+            if (tg && tg.close) {
                 // Пытаемся отправить сообщение о закрытии
                 try {
                     tg.sendData(JSON.stringify({ 
@@ -757,8 +786,18 @@
                     tg.close();
                 }
             } else {
-                // Если не в Telegram, просто показываем сообщение
-                alert('Закройте вкладку браузера');
+                // Если не в Telegram, показываем сообщение и перенаправляем
+                if (confirm('Закрыть арену и вернуться в бота?')) {
+                    // Пытаемся отправить данные через Telegram (если есть)
+                    if (tg && tg.sendData) {
+                        tg.sendData(JSON.stringify({ 
+                            action: 'close_arena',
+                            battle_id: battleId 
+                        }));
+                    }
+                    // Перенаправляем на специальный URL для закрытия
+                    window.location.href = 'https://t.me/KamiDeckBot'; // Замените на username вашего бота
+                }
             }
         }
         
