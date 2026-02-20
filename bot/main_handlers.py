@@ -13,7 +13,7 @@ from database.models.user_card import UserCard
 from database.models.card import Card
 from game.upgrade_calculator import get_upgrade_cost
 from game.duplicate_system import check_for_duplicate, process_duplicate
-from game.expedition_system import get_active_expeditions, ExpeditionManager
+from game.expedition_system import ExpeditionManager
 from sqlalchemy import func, and_
 
 from sqlalchemy import select
