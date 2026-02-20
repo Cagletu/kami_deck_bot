@@ -110,8 +110,8 @@ ID: <code>{user.id}</code>
 Уровень: <code>{user.level}</code>
 
 <b>💰 Ресурсы:</b>
-Монеты: <code>{user.coins}</code>
-Пыль: <code>{user.dust}</code>
+Монеты💰: <code>{user.coins}</code>
+Пыль✨: <code>{user.dust}</code>
 Слотов экспедиций: <code>{user.expeditions_slots}</code>
 
 <b>🃏 Коллекция:</b>
@@ -138,12 +138,17 @@ ID: <code>{user.id}</code>
 
 # ===== COLLECTION =====
 @router.message(Command("collection"))
-async def cmd_collection(message: types.Message):
-    if message.from_user.is_bot:
-        return
+async def cmd_collection(message: types.Message, user_id: int = None):
+    
+        # Определяем какой ID использовать
+    if user_id:
+        tg_id = user_id
+    else:
+        tg_id = message.from_user.id
+        
     try:
         async with AsyncSessionLocal() as session:
-            user = await get_user_or_create(session, message.from_user.id)
+            user = await get_user_or_create(session, tg_id)
 
         stats = await get_collection_stats(user.id)
 
@@ -172,8 +177,8 @@ async def cmd_collection(message: types.Message):
 
 @router.message(Command("open_pack"))
 async def cmd_open_pack(message: types.Message):
-    if message.from_user.is_bot:
-        return
+        # Определяем какой ID использовать
+        
     try:
         async with AsyncSessionLocal() as session:
             user = await get_user_or_create(
@@ -236,7 +241,7 @@ async def cmd_open_pack(message: types.Message):
         text = f"<b>📦 ВЫ ОТКРЫЛИ ПАЧКУ КАРТ!</b>\n\n💰 Потрачено: <code>100</code> монет\n💰 Осталось: <code>{user.coins}</code> монет\n\n"
 
         if duplicates:
-            text += "\n<b>🔄 ДУБЛИКАТЫ ПРЕВРАЩЕНЫ В ПЫЛЬ:</b>\n"
+            text += "\n<b>🔄 ДУБЛИКАТЫ ПРЕВРАЩЕНЫ В ПЫЛЬ✨:</b>\n"
             for dup in duplicates:
                 emoji = {'E':'⚪','D':'🟢','C':'⚡','B':'💫','A':'🔮','S':'⭐','ASS':'✨','SSS':'🏆'}.get(dup['card'].rarity,'🃏')
                 text += f"{emoji} {dup['card'].card_name} [{dup['card'].rarity}] → +{dup['dust']}✨\n"
@@ -277,8 +282,8 @@ async def cmd_open_pack(message: types.Message):
 # ===== DAILY =====
 @router.message(Command("daily"))
 async def cmd_daily(message: types.Message):
-    if message.from_user.is_bot:
-        return
+        # Определяем какой ID использовать
+        
     try:
         async with AsyncSessionLocal() as session:
             user = await get_user_or_create(session, message.from_user.id)
@@ -306,11 +311,11 @@ async def cmd_daily(message: types.Message):
         text = f"""
 <b>🎁 ЕЖЕДНЕВНАЯ НАГРАДА</b>
 
-💰 Получено: <code>{reward_coins}</code> монет
-✨ Получено: <code>{reward_dust}</code> пыли
+💰 Получено: <code>{reward_coins}</code> монет 💰
+✨ Получено: <code>{reward_dust}</code> пыли ✨
 
-💰 Теперь у вас: <code>{user.coins}</code> монет
-✨ Пыли: <code>{user.dust}</code>
+Теперь у вас: <code>{user.coins}</code> монет💰
+<code>{user.dust}</code> пыли✨
 
 <b>📅 Заходите завтра снова!</b>
 """
@@ -324,8 +329,8 @@ async def cmd_daily(message: types.Message):
 # ===== HELP =====
 @router.message(Command("help"))
 async def cmd_help(message: types.Message):
-    if message.from_user.is_bot:
-        return
+        # Определяем какой ID использовать
+        
     try:
         help_text = """
 <b>❓ ПОМОЩЬ ПО ANIME CARDS GAME</b>
@@ -347,8 +352,8 @@ async def cmd_help(message: types.Message):
 • Бонус за карты из одного аниме
 
 📦 <b>Пачки карт</b>
-• 5 карт в пачке
-• Pity-система: A каждые 10 пачек, S каждые 30
+• 3 карт в пачке
+• Pity-система: A каждые 10 пачек, S каждые 50
 • Чем выше редкость - тем сильнее карта
 
 ⭐ <b>Улучшение карт</b>
@@ -356,19 +361,18 @@ async def cmd_help(message: types.Message):
 • Улучшайте любимые карты
 • Максимальный уровень: 100
 
-⚔️ <b>Арена (скоро)</b>
+⚔️ <b>Арена</b>
 • Сражайтесь с другими игроками
 • Победа повышает рейтинг
 • Даже проигрыш дает награду
 
 🔄 <b>Обмен (скоро)</b>
 • Меняйтесь картами с друзьями
-• Только S и выше
 • Уровень сбрасывается
 
 <b>💰 Валюта:</b>
 • 🟡 Монеты - за экспедиции и дейлики
-• 💎 Пыль - за распыление дублей
+• ✨ Пыль - за распыление дублей
 
 <b>🆘 Поддержка:</b>
 @Cagletu
@@ -514,12 +518,9 @@ async def show_rarity_collection(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "back_to_collection")
 async def back_to_collection(callback: types.CallbackQuery):
-
-    # if callback.from_user.is_bot:
-    #     return
         
     try:
-        await cmd_collection(callback.message)
+        await cmd_collection(callback.message, callback.from_user.id)
         await callback.answer()
     except Exception as e:
         logger.exception(f"Ошибка back_to_collection: {e}")
@@ -588,7 +589,7 @@ async def cb_open_pack(callback: types.CallbackQuery):
         )
 
         if duplicates:
-            text += "\n<b>🔄 ДУБЛИКАТЫ ПРЕВРАЩЕНЫ В ПЫЛЬ:</b>\n"
+            text += "\n<b>🔄 ДУБЛИКАТЫ ПРЕВРАЩЕНЫ В ПЫЛЬ ✨:</b>\n"
             for dup in duplicates:
                 emoji = {'E':'⚪','D':'🟢','C':'⚡','B':'💫','A':'🔮','S':'⭐','ASS':'✨','SSS':'🏆'}.get(dup['card'].rarity,'🃏')
                 text += f"{emoji} {dup['card'].card_name} [{dup['card'].rarity}] → +{dup['dust']}✨\n"
@@ -805,7 +806,7 @@ async def upgrade_card(callback: types.CallbackQuery):
             from game.upgrade_calculator import get_upgrade_cost, calculate_stats_for_level
             upgrade_cost = get_upgrade_cost(card, user_card.level)
             if user.dust < upgrade_cost:
-                await callback.answer(f"❌ Не хватает пыли! Нужно: {upgrade_cost}", show_alert=True)
+                await callback.answer(f"❌ Не хватает пыли ✨! Нужно: {upgrade_cost} ✨", show_alert=True)
                 return
 
             # Улучшаем
@@ -962,7 +963,7 @@ async def upgrade_card_5x(callback: types.CallbackQuery):
                 total_cost += get_upgrade_cost(card, user_card.level + i)
 
             if user.dust < total_cost:
-                await callback.answer(f"❌ Не хватает пыли! Нужно: {total_cost}", show_alert=True)
+                await callback.answer(f"❌ Не хватает пыли ✨! Нужно: {total_cost} ✨", show_alert=True)
                 return
 
             # Применяем улучшения
@@ -1052,7 +1053,7 @@ async def collection_by_anime(callback: types.CallbackQuery):
                 await callback.message.edit_text(
                     "📭 <b>У вас пока нет карт</b>\n\nОткройте пачку: /open_pack",
                     reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text="« Назад", callback_data="back_to_collection")]
+                        [InlineKeyboardButton(text="« Назад", callback_data="back_to_collection_menu")]
                     ])
                 )
                 await callback.answer()
@@ -1064,7 +1065,7 @@ async def collection_by_anime(callback: types.CallbackQuery):
                 text += f"📺 <b>{anime_name}</b> — {count} карт\n"
 
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="« Назад", callback_data="back_to_collection")]
+                [InlineKeyboardButton(text="« Назад", callback_data="back_to_collection_menu")]
             ])
 
             await callback.message.edit_text(text, reply_markup=keyboard)
@@ -1102,7 +1103,7 @@ async def collection_favorites(callback: types.CallbackQuery):
                     "⭐ <b>У вас нет избранных карт</b>\n\n"
                     "Добавьте карты в избранное при просмотре",
                     reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text="« Назад", callback_data="back_to_collection")]
+                        [InlineKeyboardButton(text="« Назад", callback_data="back_to_collection_menu")]
                     ])
                 )
                 await callback.answer()
@@ -1124,7 +1125,7 @@ async def collection_favorites(callback: types.CallbackQuery):
             if view_row:
                 keyboard.append(view_row)
 
-            keyboard.append([InlineKeyboardButton(text="« Назад", callback_data="back_to_collection")])
+            keyboard.append([InlineKeyboardButton(text="« Назад", callback_data="back_to_collection_menu")])
 
             await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
             await callback.answer()
@@ -1391,7 +1392,7 @@ async def view_card_detail(callback: types.CallbackQuery):
 
 <b>📊 Прогресс:</b>
 📈 Уровень: {user_card.level}/100
-✨ Стоимость улучшения: {upgrade_cost} пыли
+✨ Стоимость улучшения: {upgrade_cost} пыли ✨
 🔄 Улучшено раз: {user_card.times_upgraded}
 
 <b>🏆 Статус:</b>
