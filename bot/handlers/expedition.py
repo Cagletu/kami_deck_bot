@@ -430,7 +430,6 @@ async def exped_claim_all(callback: CallbackQuery):
                 return
     
             text = f"""
-<b>🎁 ПОЛУЧЕНЫ НАГРАДЫ!</b>
 
 📊 <b>Экспедиций завершено:</b> {rewards["count"]}
 
@@ -439,7 +438,7 @@ async def exped_claim_all(callback: CallbackQuery):
 """
             # Если есть карты - отправляем их по одной с изображениями
             if rewards["cards"]:
-                await callback.message.answer("<b>📦 ПОЛУЧЕННЫЕ КАРТЫ:</b>")
+                await callback.message.answer("<b>🎁 ПОЛУЧЕНЫ НАГРАДЫ!</b>")
                 for card in rewards["cards"]:
                     emoji = {
                         'E':'⚪','D':'🟢','C':'⚡','B':'💫',
@@ -448,14 +447,15 @@ async def exped_claim_all(callback: CallbackQuery):
 
                     await callback.message.answer_photo(
                         photo=card.original_url,
-                        caption=f"{emoji} <b>{card.card_name}</b> [{card.rarity}]\n✨ Новая карта из экспедиции!"
+                        caption=f"{emoji} <b>{card.card_name}</b> [{card.rarity}]\n✨ Новая карта из экспедиции!\n {text}"
                     )
     
             # Кнопка возврата
             await callback.message.answer(
-                "🏠 Вернуться в меню",
+                "🏠 Вернуться в меню: ",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="🏕️ В экспедиции", callback_data="expedition")]
+                    [InlineKeyboardButton(text="🏕️ Экспедиций", callback_data="expedition")],
+                     [InlineKeyboardButton(text="🏠 Главное", callback_data="back_to_main")]
                 ])
             )
 

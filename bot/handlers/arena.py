@@ -88,7 +88,7 @@ async def generate_test_deck() -> list:
 
         test_deck = []
         for i, card in enumerate(cards):
-            level = random.randint(5, 15)
+            level = random.randint(5, 20)
 
             # Рассчитываем характеристики на основе уровня
             power = int(card.base_power * (1 + (level - 1) * 0.06))  # +6% за уровень

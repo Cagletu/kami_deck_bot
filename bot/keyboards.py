@@ -17,6 +17,7 @@ async def set_bot_commands(bot: Bot):
         BotCommand(command="/open_pack", description="📦 Открыть пачку"),
         BotCommand(command="/expedition", description="🏕️ Экспедиции"),
         BotCommand(command="/daily", description="🎁 Дейлик"),
+        BotCommand(command="/arena", description="⚔️ Арена"),
         BotCommand(command="/help", description="❓ Помощь"),
     ]
     await bot.set_my_commands(commands)
