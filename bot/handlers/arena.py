@@ -210,7 +210,6 @@ async def cmd_arena(message: types.Message, user_id: int = None):
                     text="⚔️ НАЧАТЬ БИТВУ",
                     web_app=WebAppInfo(url=f"{WEBAPP_URL}?battle_id={battle_id}")
                 )],
-                [KeyboardButton(text="« Назад в меню")]
             ],
             resize_keyboard=True,
             one_time_keyboard=True  # Клавиатура скроется после нажатия
@@ -235,18 +234,10 @@ async def cmd_arena(message: types.Message, user_id: int = None):
         await message.answer("❌ Произошла ошибка. Попробуйте позже.")
 
 
-@router.message(F.text == "« Назад в меню")
-async def back_to_main_from_arena(message: types.Message):
-    """Возврат в главное меню из арены"""
-    from bot.main_handlers import cmd_start
-    await cmd_start(message)
-
-
 @router.callback_query(F.data == "open_arena")
 async def open_arena(callback: types.CallbackQuery):
     """Обработчик кнопки открытия арены"""
     try:
-        await callback.message.delete()
         # Передаем правильный параметр
         await cmd_arena(callback.message, callback.from_user.id)
         await callback.answer()

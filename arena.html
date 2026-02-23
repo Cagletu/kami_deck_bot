@@ -852,26 +852,40 @@
         }
         
         function closeArena() {
-            const tg = window.Telegram?.WebApp;
-
-            try {
-                // Отправляем данные (если нужно)
-                tg?.sendData(JSON.stringify({
-                    action: 'close_arena',
-                    battle_id: battleId
-                }));
-            } catch (e) {
-                console.log("sendData error", e);
-            }
-
-            // На мобильных нужно дать больше времени
-            setTimeout(() => {
+            if (tg && tg.close) {
+                // Пытаемся отправить сообщение о закрытии
                 try {
-                    tg?.close();
+                    tg.sendData(JSON.stringify({ 
+                        action: 'close_arena',
+                        battle_id: battleId 
+                    }));
+                    // Даем время на отправку
+                    setTimeout(() => {
+                        tg.close();
+                    }, 300);
                 } catch (e) {
-                    console.log("close error", e);
+                    console.log('Ошибка отправки данных при закрытии');
+                    tg.close();
                 }
-            }, 150);
+            } else {
+                // Если не в Telegram, показываем сообщение и перенаправляем
+                if (confirm('Закрыть арену и вернуться в бота?')) {
+                    // Пытаемся отправить данные через Telegram (если есть)
+                    if (tg && tg.sendData) {
+                        tg.sendData(JSON.stringify({ 
+                            action: 'close_arena',
+                            battle_id: battleId 
+                        }));
+                        setTimeout(() => {
+                            tg.close();
+                        }, 300);
+                    }
+                    // Возвращаемся в бота (вместо перенаправления)
+                    if (tg) {
+                        tg.close();
+                    }
+                }
+            }
         }
 
         
