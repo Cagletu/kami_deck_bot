@@ -233,7 +233,12 @@ async def health_check():
 async def get_battle(battle_id: str):
     """Получить состояние битвы"""
     try:
-        battle_data = await battle_storage.get_battle(battle_id)
+        # ВАЖНО: добавляем префикс battle: при поиске
+        battle_data = await battle_storage.get_battle(f"battle:{battle_id}")
+        if not battle_data:
+            # Пробуем без префикса для обратной совместимости
+            battle_data = await battle_storage.get_battle(battle_id)
+
         if not battle_data:
             logger.error(f"Battle {battle_id} not found in Redis")
             # Для отладки - проверим все ключи в Redis
@@ -241,7 +246,7 @@ async def get_battle(battle_id: str):
                 import redis.asyncio as redis
                 r = redis.from_url(
                     os.getenv("REDIS_URL", "redis://localhost:6379"))
-                keys = await r.keys("battle:*")
+                keys = await r.keys("*")
                 logger.info(f"Available Redis keys: {keys}")
             except:
                 pass
