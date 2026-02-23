@@ -355,7 +355,7 @@ async def handle_webapp_data(message: types.Message):
                     f"├ Поражений: {old_stats['losses']} → {user.arena_losses}\n"
                     f"├ Рейтинг: {old_stats['rating']} → {user.arena_rating}\n"
                     f"├ Монеты: {old_stats['coins']} → {user.coins}\n"
-                    f"└ Пыль: {old_stats['dust']} → {user.dust}"
+                    f"└ Пыль: {old_stats['dust']} → {user.dust}",
                     reply_markup=ReplyKeyboardRemove()  # Убираем reply клавиатуру
                 )
 
