@@ -241,231 +241,128 @@ async def open_arena(callback: types.CallbackQuery):
         await callback.answer("❌ Ошибка открытия арены", show_alert=True)
     
 
-@router.message(F.web_app_data)
-async def handle_webapp_data(message: types.Message):
-    """Обрабатывает данные из WebApp"""
-    try:
-        data = json.loads(message.web_app_data.data)
-        action = data.get('action')
-        battle_id = data.get('battle_id')
-        logger.info(f"WebApp data received: action={action}, battle_id={battle_id}")
+        @router.message(F.web_app_data)
+        async def handle_webapp_data(message: types.Message):
+            """Обрабатывает данные из WebApp"""
+            try:
+                data = json.loads(message.web_app_data.data)
+                action = data.get('action')
+                battle_id = data.get('battle_id')
+                result = data.get('result')
+                rewards = data.get('rewards', {})
 
-        # ===== ОБРАБОТКА РЕЗУЛЬТАТА БИТВЫ =====
-        if action == 'battle_result':
-            result = data.get('result')
-            rewards = data.get('rewards', {})
+                logger.info("=== WEBAPP DATA RECEIVED ===")
+                logger.info(f"Action: {action}")
+                logger.info(f"Battle ID: {battle_id}")
+                logger.info(f"Result: {result}")
+                logger.info(f"Rewards: {rewards}")
+                logger.info(f"Full data: {data}")
 
-            logger.info(f"Battle result: {result}, rewards: {rewards}, battle_id={battle_id}")
+                # ===== ОБРАБОТКА РЕЗУЛЬТАТА БИТВЫ =====
+                if action == 'battle_result':
+                    logger.info(f"Processing battle result: {result}")
 
-            async with AsyncSessionLocal() as session:
-                user = await get_user_or_create(session, message.from_user.id)
+                    async with AsyncSessionLocal() as session:
+                        user = await get_user_or_create(session, message.from_user.id)
 
-                # Сохраняем старые значения для отчета
-                old_stats = {
-                    'wins': user.arena_wins,
-                    'losses': user.arena_losses,
-                    'rating': user.arena_rating,
-                    'coins': user.coins,
-                    'dust': user.dust
-                }
+                        # Сохраняем старые значения для отчета
+                        old_stats = {
+                            'wins': user.arena_wins,
+                            'losses': user.arena_losses,
+                            'rating': user.arena_rating,
+                            'coins': user.coins,
+                            'dust': user.dust
+                        }
 
-                # Начисляем награды
-                if result == 'win':
-                    user.arena_wins += 1
-                    rating_change = rewards.get('rating', 20)
-                    user.arena_rating += rating_change
-                    user.coins += rewards.get('coins', 50)
-                    user.dust += rewards.get('dust', 50)
-                    logger.info(f"WIN: +{rating_change} rating, +{rewards.get('coins', 50)} coins")
+                        logger.info(f"User before battle: wins={old_stats['wins']}, rating={old_stats['rating']}, coins={old_stats['coins']}")
 
-                elif result == 'lose':
-                    user.arena_losses += 1
-                    rating_change = rewards.get('rating', -15)
-                    user.arena_rating = max(0, user.arena_rating + rating_change)
-                    user.coins += rewards.get('coins', 25)
-                    user.dust += rewards.get('dust', 25)
-                    logger.info(f"LOSE: {rating_change} rating, +{rewards.get('coins', 25)} coins")
+                        # Начисляем награды
+                        if result == 'win':
+                            rating_change = rewards.get('rating', 20)
+                            coins_reward = rewards.get('coins', 50)
+                            dust_reward = rewards.get('dust', 50)
 
-                # Получаем данные битвы из Redis
-                battle_data = None
-                if battle_id:
-                    battle_data = await battle_storage.get_battle(battle_id)
+                            user.arena_wins += 1
+                            user.arena_rating += rating_change
+                            user.coins += coins_reward
+                            user.dust += dust_reward
 
-                if battle_data:
-                    logger.info(f"Battle data found in Redis: {battle_data.get('turn', 0)} turns")
+                            logger.info(f"WIN: +{rating_change} rating, +{coins_reward} coins, +{dust_reward} dust")
 
-                    # Сохраняем битву в БД
-                    db_battle = DBArenaBattle(
-                        attacker_id=user.id,
-                        defender_id=battle_data.get("opponent_id") or -1,
-                        attacker_deck=[c.get("user_card_id") for c in battle_data.get("player_cards", []) if c.get("user_card_id", 0) > 0],
-                        defender_deck=[c.get("user_card_id") for c in battle_data.get("enemy_cards", []) if c.get("user_card_id", 0) > 0],
-                        rounds=battle_data.get("turn", 0),
-                        winner_id=user.id if result == 'win' else None,
-                        result="attacker_win" if result == 'win' else "defender_win",
-                        attacker_rating_change=rewards.get('rating', 20) if result == 'win' else rating_change,
-                        attacker_reward_coins=rewards.get('coins', 50) if result == 'win' else rewards.get('coins', 25),
-                        attacker_reward_dust=rewards.get('dust', 50) if result == 'win' else rewards.get('dust', 25),
-                        ended_at=datetime.now()
-                    )
-                    session.add(db_battle)
+                        elif result == 'lose':
+                            rating_change = rewards.get('rating', -15)
+                            coins_reward = rewards.get('coins', 25)
+                            dust_reward = rewards.get('dust', 25)
+
+                            user.arena_losses += 1
+                            user.arena_rating = max(0, user.arena_rating + rating_change)
+                            user.coins += coins_reward
+                            user.dust += dust_reward
+
+                            logger.info(f"LOSE: {rating_change} rating, +{coins_reward} coins, +{dust_reward} dust")
+
+                        # Получаем данные битвы из Redis
+                        battle_data = None
+                        if battle_id:
+                            battle_data = await battle_storage.get_battle(battle_id)
+
+                        if battle_data:
+                            logger.info(f"Battle data found in Redis: {battle_data.get('turn', 0)} turns")
+
+                            # Сохраняем битву в БД
+                            db_battle = DBArenaBattle(
+                                attacker_id=user.id,
+                                defender_id=battle_data.get("opponent_id") or -1,
+                                attacker_deck=[c.get("user_card_id") for c in battle_data.get("player_cards", []) if c.get("user_card_id", 0) > 0],
+                                defender_deck=[c.get("user_card_id") for c in battle_data.get("enemy_cards", []) if c.get("user_card_id", 0) > 0],
+                                rounds=battle_data.get("turn", 0),
+                                winner_id=user.id if result == 'win' else None,
+                                result="attacker_win" if result == 'win' else "defender_win",
+                                attacker_rating_change=rewards.get('rating', 20) if result == 'win' else rating_change,
+                                attacker_reward_coins=coins_reward,
+                                attacker_reward_dust=dust_reward,
+                                ended_at=datetime.now()
+                            )
+                            session.add(db_battle)
+                        else:
+                            logger.warning(f"Battle data not found in Redis for {battle_id}")
+
+                        # Сохраняем изменения в БД
+                        await session.commit()
+                        await session.refresh(user)
+
+                        logger.info(f"User after battle: wins={user.arena_wins}, rating={user.arena_rating}, coins={user.coins}")
+
+                        # Отправляем подтверждение
+                        await message.answer(
+                            f"{'🎉' if result == 'win' else '😔'} <b>БИТВА ЗАВЕРШЕНА!</b>\n\n"
+                            f"📊 Статистика:\n"
+                            f"├ Побед: {old_stats['wins']} → {user.arena_wins}\n"
+                            f"├ Поражений: {old_stats['losses']} → {user.arena_losses}\n"
+                            f"├ Рейтинг: {old_stats['rating']} → {user.arena_rating}\n"
+                            f"├ Монеты: {old_stats['coins']} → {user.coins}\n"
+                            f"└ Пыль: {old_stats['dust']} → {user.dust}"
+                        )
+
+                        # Удаляем битву из Redis
+                        if battle_id:
+                            await battle_storage.delete_battle(battle_id)
+                            logger.info(f"Battle {battle_id} deleted from Redis")
+
+                    return
+
+                # ===== ОСТАЛЬНАЯ ОБРАБОТКА =====
+                elif action == 'close_arena':
+                    logger.info(f"User {message.from_user.id} closed arena")
+                    return
+
                 else:
-                    logger.warning(f"Battle data not found in Redis for {battle_id}")
+                    logger.warning(f"Unknown action: {action}")
 
-                # Сохраняем изменения в БД
-                await session.commit()
-                await session.refresh(user)
-
-                logger.info(f"User stats after battle: wins={user.arena_wins}, rating={user.arena_rating}, coins={user.coins}")
-
-                # Отправляем подтверждение
-                await message.answer(
-                    f"{'🎉' if result == 'win' else '😔'} <b>БИТВА ЗАВЕРШЕНА!</b>\n\n"
-                    f"📊 Статистика:\n"
-                    f"├ Побед: {old_stats['wins']} → {user.arena_wins}\n"
-                    f"├ Поражений: {old_stats['losses']} → {user.arena_losses}\n"
-                    f"├ Рейтинг: {old_stats['rating']} → {user.arena_rating}\n"
-                    f"├ Монеты: {old_stats['coins']} → {user.coins}\n"
-                    f"└ Пыль: {old_stats['dust']} → {user.dust}"
-                )
-
-                # Удаляем битву из Redis
-                if battle_id:
-                    await battle_storage.delete_battle(battle_id)
-                    logger.info(f"Battle {battle_id} deleted from Redis")
-
-            return
-
-        # ===== ОСТАЛЬНАЯ ОБРАБОТКА =====
-        if action == 'close_arena':
-            logger.info(f"User {message.from_user.id} closed arena")
-            return
-
-        if not battle_id:
-            return
-
-        # Получаем состояние боя из Redis
-        battle_data = await battle_storage.get_battle(battle_id)
-        if not battle_data:
-            await message.answer(json.dumps({
-                "type": "error",
-                "message": "Битва не найдена или истекло время"
-            }))
-            return
-
-        if action == 'next_turn':
-            async with AsyncSessionLocal() as session:
-                user = await get_user_or_create(session, message.from_user.id)
-                
-            # Восстанавливаем карты из сохраненных данных
-            user_cards = []
-            for user_card_id, card_id in battle_data["user_deck"]:
-                    result = await session.execute(
-                        select(UserCard, Card)
-                        .join(Card, UserCard.card_id == Card.id)
-                        .where(UserCard.id == user_card_id)
-                    )
-                    data = result.first()
-                    if data:
-                        user_cards.append(data)
-
-            opponent_cards = []
-            for user_card_id, card_id in battle_data["opponent_deck"]:
-                async with AsyncSessionLocal() as session:
-                    result = await session.execute(
-                        select(UserCard, Card)
-                        .join(Card, UserCard.card_id == Card.id)
-                        .where(UserCard.id == user_card_id)
-                    )
-                    data = result.first()
-                    if data:
-                        opponent_cards.append(data)
-
-            if not opponent_cards:
-                opponent_cards, _ = await generate_test_deck()
-
-            # Создаем бой с текущим состоянием
-            user_battle_cards = prepare_battle_cards(user_cards, is_user=True)
-            opponent_battle_cards = prepare_battle_cards(opponent_cards, is_user=False)
-
-            battle = ArenaBattle(user_battle_cards, opponent_battle_cards)
-
-            # Выполняем один ход
-            actions = battle.next_turn()
-
-            # Проверяем окончание боя
-            if battle.winner:
-                async with AsyncSessionLocal() as session:
-                    user = await get_user_or_create(session, message.from_user.id)
-
-                    # Сохраняем в БД
-                    db_battle = DBArenaBattle(
-                        attacker_id=user.id,
-                        defender_id=battle_data.get("opponent_id") or -1,
-                        attacker_deck=[uc.id for uc, _ in user_cards],
-                        defender_deck=[uc.id for uc, _ in opponent_cards] if battle_data.get("opponent_id") else [],
-                        rounds=battle.turn,
-                        attacker_damage=sum(a.damage for a in battle.actions if a.attacker_id > 0),
-                        defender_damage=sum(a.damage for a in battle.actions if a.attacker_id < 0),
-                        attacker_rating_before=user.arena_rating,
-                        defender_rating_before=1000,
-                        ended_at=datetime.now()
-                    )
-
-                    if battle.winner == 'user':
-                        db_battle.winner_id = user.id
-                        db_battle.result = "attacker_win"
-                        db_battle.attacker_rating_change = 20
-                        db_battle.attacker_reward_coins = 50
-                        db_battle.attacker_reward_dust = 50
-
-                        user.arena_wins += 1
-                        user.arena_rating += 20
-                        user.coins += 150
-                        user.dust += 25
-                    else:
-                        db_battle.result = "defender_win"
-                        db_battle.attacker_rating_change = -15
-                        db_battle.attacker_reward_coins = 25
-                        db_battle.attacker_reward_dust = 25
-
-                        user.arena_losses += 1
-                        user.arena_rating = max(0, user.arena_rating - 5)
-                        user.coins += 50
-                        user.dust += 10
-
-                    session.add(db_battle)
-                    await session.commit()
-
-                # Удаляем из Redis
-                await battle_storage.delete_battle(battle_id)
-
-            # Обновляем состояние в Redis
-            battle_data["state"] = battle.get_battle_state()
-            await battle_storage.save_battle(battle_id, battle_data)
-
-            # Отправляем обновление
-            await message.answer(json.dumps({
-                "type": "battle_update",
-                "state": battle.get_battle_state(),
-                "actions": [
-                    {
-                        "attacker_id": a.attacker_id,
-                        "attacker_name": a.attacker_name,
-                        "defender_id": a.defender_id,
-                        "defender_name": a.defender_name,
-                        "damage": a.damage,
-                        "is_critical": a.is_critical,
-                        "is_dodged": a.is_dodged
-                    }
-                    for a in actions
-                ]
-            }))
-
-    except Exception as e:
-        logger.exception(f"Ошибка обработки WebApp данных: {e}")
-        await message.answer(json.dumps({
-            "type": "error",
-            "message": str(e)
-        }))
+            except Exception as e:
+                logger.exception(f"Ошибка обработки WebApp данных: {e}")
+                await message.answer(json.dumps({
+                    "type": "error",
+                    "message": str(e)
+                }))
                              

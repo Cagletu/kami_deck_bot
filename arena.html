@@ -270,6 +270,7 @@
 
     <script>
         let tg = null;
+        let isTelegramEnvironment = false;
         let battleId = null;
         let playerCards = {};
         let enemyCards = {};
@@ -280,6 +281,7 @@
             // Проверяем, открыто ли приложение в Telegram
             if (window.Telegram && window.Telegram.WebApp) {
                 tg = window.Telegram.WebApp;
+                isTelegramEnvironment = true;
                 tg.expand();
                 tg.ready();
                 tg.enableClosingConfirmation();
@@ -287,7 +289,7 @@
 
                 // Добавляем обработчик закрытия
                 window.addEventListener('beforeunload', function() {
-                    // Ничего не делаем, просто сохраняем
+                    console.log('WebApp закрывается');
                 });
             } else {
                 console.log('Режим разработки: приложение открыто в браузере');
@@ -295,7 +297,6 @@
         } catch (e) {
             console.log('Ошибка инициализации Telegram WebApp:', e);
         }
-
         
         // Получаем battle_id из URL
         function getBattleIdFromUrl() {
@@ -552,23 +553,39 @@
                             if (data.rewards) {
                                 addLog(`💰 Награды: ${data.rewards.coins} монет, ${data.rewards.dust} пыли, ${data.rewards.rating} рейтинга`);
                             }
-                            tg?.sendData(JSON.stringify({ 
-                                action: 'battle_result',
-                                battle_id: battleId,
-                                result: 'win',
-                                rewards: data.rewards 
-                            }));
+                            // ПРОВЕРЯЕМ ЧТО tg СУЩЕСТВУЕТ
+                            if (tg && tg.sendData) {
+                                tg.sendData(JSON.stringify({ 
+                                    action: 'battle_result',
+                                    battle_id: battleId,
+                                    result: 'win',
+                                    rewards: data.rewards 
+                                }));
+                                console.log('Отправлены данные о победе');
+                            } else {
+                                console.log('tg.sendData недоступен');
+                            }
+                            setTimeout(() => {
+                                if (tg) tg.close();
+                            }, 500);
                         } else if (data.winner === 'enemy') {
                             addLog('😔 Поражение...');
                             if (data.rewards) {
                                 addLog(`💰 Награды: ${data.rewards.coins} монет, ${data.rewards.dust} пыли, ${data.rewards.rating} рейтинга`);
                             }
-                            tg?.sendData(JSON.stringify({ 
-                                action: 'battle_result', 
-                                result: 'lose',
-                                battle_id: battleId,
-                                rewards: data.rewards
-                            }));
+                            // ПРОВЕРЯЕМ ЧТО tg СУЩЕСТВУЕТ
+                            if (tg && tg.sendData) {
+                                tg.sendData(JSON.stringify({ 
+                                    action: 'battle_result', 
+                                    result: 'lose',
+                                    battle_id: battleId,
+                                    rewards: data.rewards 
+                                }));
+                                console.log('Отправлены данные о поражении');
+                            }
+                            setTimeout(() => {
+                                if (tg) tg.close();
+                            }, 500);
                         }
 
                         // Блокируем кнопку после окончания
@@ -685,23 +702,32 @@
                                 if (data.rewards) {
                                     addLog(`💰 Награды: ${data.rewards.coins} монет, ${data.rewards.dust} пыли, ${data.rewards.rating} рейтинга`);
                                 }
-                                tg?.sendData(JSON.stringify({ 
-                                    action: 'battle_result',
-                                    battle_id: battleId,
-                                    result: 'win',
-                                    rewards: data.rewards 
-                                }));
+                                // ПРОВЕРЯЕМ ЧТО tg СУЩЕСТВУЕТ
+                                if (tg && tg.sendData) {
+                                    tg.sendData(JSON.stringify({ 
+                                        action: 'battle_result',
+                                        battle_id: battleId,
+                                        result: 'win',
+                                        rewards: data.rewards 
+                                    }));
+                                    console.log('Отправлены данные о победе');
+                                    } else {
+                                    console.log('tg.sendData недоступен');
+                                    }
                                 setTimeout(() => {
                                     if (tg) tg.close();
                                 }, 500);
                             } else if (data.winner === 'enemy') {
-                                addLog('😔 Поражение...');
-                                tg?.sendData(JSON.stringify({ 
-                                    action: 'battle_result', 
-                                    result: 'lose',
-                                    battle_id: battleId,
-                                    rewards: data.rewards 
-                                }));
+                                // ПРОВЕРЯЕМ ЧТО tg СУЩЕСТВУЕТ
+                                if (tg && tg.sendData) {
+                                    tg.sendData(JSON.stringify({ 
+                                        action: 'battle_result', 
+                                        result: 'lose',
+                                        battle_id: battleId,
+                                        rewards: data.rewards 
+                                    }));
+                                    console.log('Отправлены данные о поражении');
+                                }
                                 setTimeout(() => {
                                     if (tg) tg.close();
                                 }, 500);
@@ -826,36 +852,34 @@
         }
         
         function closeArena() {
-            if (tg && tg.close) {
+            if (tg && isTelegramEnvironment) {
                 // Пытаемся отправить сообщение о закрытии
                 try {
-                    tg.sendData(JSON.stringify({ 
-                        action: 'close_arena',
-                        battle_id: battleId 
-                    }));
-                    // Даем время на отправку
-                    setTimeout(() => {
-                        tg.close();
-                    }, 300);
-                } catch (e) {
-                    console.log('Ошибка отправки данных при закрытии');
-                    tg.close();
-                }
-            } else {
-                // Если не в Telegram, показываем сообщение и перенаправляем
-                if (confirm('Закрыть арену и вернуться в бота?')) {
-                    // Пытаемся отправить данные через Telegram (если есть)
-                    if (tg && tg.sendData) {
+                    if (tg.sendData) {
                         tg.sendData(JSON.stringify({ 
                             action: 'close_arena',
                             battle_id: battleId 
                         }));
+                    }
+                    // Для мобильных устройств
+                    if (tg.close) {
                         setTimeout(() => {
                             tg.close();
                         }, 300);
                     }
-                    // Перенаправляем на специальный URL для закрытия
-                    window.location.href = 'https://t.me/KamiDeckBot'; // username бота
+                } catch (e) {
+                    console.log('Ошибка отправки данных при закрытии');
+                    if (tg.close) tg.close();
+                }
+            } else {
+                // Если не в Telegram, показываем сообщение
+                if (confirm('Закрыть арену и вернуться в бота?')) {
+                    // Пробуем открыть бота
+                    window.location.href = 'tg://resolve?domain=KamiDeckBot';
+                    // Если не сработало, показываем сообщение
+                    setTimeout(() => {
+                        alert('Нажмите кнопку "Назад" в браузере');
+                    }, 500);
                 }
             }
         }
@@ -876,6 +900,42 @@
             addLog(`❌ Ошибка: ${msg}`);
             return false;
         };
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Для мобильных устройств
+            if ('ontouchstart' in window) {
+                // Увеличиваем область нажатия кнопок
+                document.querySelectorAll('.button').forEach(btn => {
+                    btn.style.padding = '15px';
+                    btn.style.minHeight = '50px';
+                });
+
+                // Добавляем поддержку touch событий
+                document.querySelectorAll('.card-slot').forEach(el => {
+                    el.addEventListener('touchstart', (e) => {
+                        e.preventDefault();
+                        const cardId = e.currentTarget.getAttribute('data-card-id');
+                        if (cardId) selectCard(cardId);
+                    });
+                });
+
+                // И обновите кнопки
+                document.getElementById('nextTurnBtn').addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    nextTurn();
+                });
+
+                document.getElementById('autoBattleBtn').addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    autoBattle();
+                });
+
+                document.querySelector('.button.close').addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    closeArena();
+                });
+            }
+        });
     </script>
 </body>
 </html>
