@@ -276,6 +276,7 @@
         let enemyCards = {};
         let currentTurn = 0;
         let battleLog = [];
+        let telegramUserId = null;
         
         try {
             // Проверяем, открыто ли приложение в Telegram
@@ -285,6 +286,10 @@
                 tg.expand();
                 tg.ready();
                 tg.enableClosingConfirmation();
+
+                if (tg.initDataUnsafe?.user?.id) {
+                    telegramUserId = tg.initDataUnsafe.user.id;
+                }
                 console.log('Telegram WebApp инициализирован');
 
                 // Добавляем обработчик закрытия
@@ -545,69 +550,27 @@
                         });
                     }
 
-                    // Проверяем победителя
+                    // 🔥 ЕСЛИ БОЙ ЗАКОНЧЕН
                     if (data.winner) {
-                        if (data.winner === 'player') {
-                            addLog('🎉 ПОБЕДА!');
-                            // Добавляем награды
-                            if (data.rewards) {
-                                addLog(`💰 Награды: ${data.rewards.coins} монет, ${data.rewards.dust} пыли, ${data.rewards.rating} рейтинга`);
-                            }
-                            // ПРОВЕРЯЕМ ЧТО tg СУЩЕСТВУЕТ
-                            if (tg && tg.sendData) {
-                                tg.sendData(JSON.stringify({ 
-                                    action: 'battle_result',
-                                    battle_id: battleId,
-                                    result: 'win',
-                                    rewards: data.rewards 
-                                }));
-                                console.log('Отправлены данные о победе');
-                            } else {
-                                console.log('tg.sendData недоступен');
-                            }
-                            setTimeout(() => {
-                                if (tg) tg.close();
-                            }, 500);
-                        } else if (data.winner === 'enemy') {
-                            addLog('😔 Поражение...');
-                            if (data.rewards) {
-                                addLog(`💰 Награды: ${data.rewards.coins} монет, ${data.rewards.dust} пыли, ${data.rewards.rating} рейтинга`);
-                            }
-                            // ПРОВЕРЯЕМ ЧТО tg СУЩЕСТВУЕТ
-                            if (tg && tg.sendData) {
-                                tg.sendData(JSON.stringify({ 
-                                    action: 'battle_result', 
-                                    result: 'lose',
-                                    battle_id: battleId,
-                                    rewards: data.rewards 
-                                }));
-                                console.log('Отправлены данные о поражении');
-                            }
-                            setTimeout(() => {
-                                if (tg) tg.close();
-                            }, 500);
-                        }
-
-                        // Блокируем кнопку после окончания
-                        btn.disabled = true;
-                        btn.textContent = '⚡ БОЙ ОКОНЧЕН';
-
-                    } else {
-                        renderBattle();
+                        await handleBattleEnd(data);
                     }
-                } else {
-                    addLog('❌ ' + (data.error || 'Ошибка сервера'));
-                }
-            } catch (error) {
-                console.error('Ошибка:', error);
-                addLog('❌ Ошибка соединения');
-            } finally {
-                if (!data?.winner) {
+                    }
+                    } catch (error) {
+                    console.error('Ошибка:', error);
+                    addLog('❌ Ошибка соединения');
+                    } finally {
+                    // Проверяем, не закончился ли бой
+                    const alivePlayers = Object.values(playerCards).filter(c => c.is_alive !== false).length;
+                    const aliveEnemies = Object.values(enemyCards).filter(c => c.is_alive !== false).length;
+
+                    if (alivePlayers > 0 && aliveEnemies > 0) {
                     btn.disabled = false;
                     btn.textContent = '⚡ СЛЕДУЮЩИЙ ХОД';
-                }
-            }
-        }
+                    } else {
+                    btn.textContent = '⚡ БОЙ ОКОНЧЕН';
+                    }
+                    }
+                    }
 
         async function autoBattle() {
             const autoBtn = document.getElementById('autoBattleBtn');
@@ -695,60 +658,37 @@
 
                         renderBattle();
 
-                        // Проверяем победителя
+                        // 🔥 ЕСЛИ БОЙ ЗАКОНЧЕН
                         if (data.winner) {
-                            if (data.winner === 'player') {
-                                addLog('🎉 ПОБЕДА!');
-                                if (data.rewards) {
-                                    addLog(`💰 Награды: ${data.rewards.coins} монет, ${data.rewards.dust} пыли, ${data.rewards.rating} рейтинга`);
-                                }
-                                // ПРОВЕРЯЕМ ЧТО tg СУЩЕСТВУЕТ
-                                if (tg && tg.sendData) {
-                                    tg.sendData(JSON.stringify({ 
-                                        action: 'battle_result',
-                                        battle_id: battleId,
-                                        result: 'win',
-                                        rewards: data.rewards 
-                                    }));
-                                    console.log('Отправлены данные о победе');
-                                    } else {
-                                    console.log('tg.sendData недоступен');
-                                    }
-                                setTimeout(() => {
-                                    if (tg) tg.close();
-                                }, 500);
-                            } else if (data.winner === 'enemy') {
-                                // ПРОВЕРЯЕМ ЧТО tg СУЩЕСТВУЕТ
-                                if (tg && tg.sendData) {
-                                    tg.sendData(JSON.stringify({ 
-                                        action: 'battle_result', 
-                                        result: 'lose',
-                                        battle_id: battleId,
-                                        rewards: data.rewards 
-                                    }));
-                                    console.log('Отправлены данные о поражении');
-                                }
-                                setTimeout(() => {
-                                    if (tg) tg.close();
-                                }, 500);
-                            }
-
+                            await handleBattleEnd(data);
+                            battleFinished = true;
                             break;
                         }
-                    } else {
-                        addLog('❌ ' + (data.error || 'Ошибка сервера'));
+                        }
+                        } catch (error) {
+                        console.error('Ошибка:', error);
+                        addLog('❌ Ошибка соединения');
                         break;
-                    }
-                } catch (error) {
-                    console.error('Ошибка:', error);
-                    addLog('❌ Ошибка соединения');
-                    break;
-                }
-            }
+                        }
 
-            autoBtn.disabled = false;
-            turnBtn.disabled = false;
-        }
+                        // Небольшая задержка между ходами
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                        }
+
+                        autoBtn.disabled = false;
+                        turnBtn.disabled = false;
+                        }
+                
+                        } catch (error) {
+                        console.error('Ошибка:', error);
+                        addLog('❌ Ошибка соединения');
+                        break;
+                        }
+                        }
+                
+                        autoBtn.disabled = false;
+                        turnBtn.disabled = false;
+                        }
 
 
         async function animateAttack(attackerId, defenderId, damage, isCritical, isPlayerAttacker = true) {
@@ -827,6 +767,64 @@
                 console.error('Animation error:', error);
                 // Не прерываем основной поток если анимация не удалась
             }
+        }
+
+        // ---------------------------
+        // 🔹 СОХРАНЕНИЕ В БАЗУ
+        // ---------------------------
+        async function saveBattleResult(result, rewards) {
+            try {
+                const response = await fetch("/api/battle/finish", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        battle_id: battleId,
+                        user_id: telegramUserId,
+                        result: result,
+                        rewards: rewards
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!data.success) {
+                    console.error("Ошибка сохранения:", data.error);
+                } else {
+                    console.log("Награды сохранены в БД");
+                }
+
+            } catch (error) {
+                console.error("Ошибка запроса сохранения:", error);
+            }
+        }
+
+        // ---------------------------
+        // 🔹 ОБРАБОТКА ПОБЕДЫ / ПОРАЖЕНИЯ
+        // ---------------------------
+        async function handleBattleEnd(data) {
+            if (!data.rewards) return;
+
+            const result = data.winner === "player" ? "win" : "lose";
+
+            // 1️⃣ Сохраняем в БД
+            await saveBattleResult(result, data.rewards);
+
+            // 2️⃣ Отправляем боту (если нужно)
+            if (tg && tg.sendData) {
+                tg.sendData(JSON.stringify({
+                    action: "battle_result",
+                    battle_id: battleId,
+                    result: result,
+                    rewards: data.rewards
+                }));
+            }
+
+            // 3️⃣ Закрываем WebApp
+            setTimeout(() => {
+                if (tg) tg.close();
+            }, 700);
         }
 
         // Функция для отображения наград

@@ -28,8 +28,7 @@ from pathlib import Path
 from services.redis_client import battle_storage
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
-import uuid
-import random
+from database.models import User
 from game.arena_battle_system import ArenaBattle, BattleCard
 
 
@@ -49,6 +48,14 @@ class BattleResponse(BaseModel):
     winner: Optional[str] = None
     rewards: Optional[Dict[str, int]] = None
     error: Optional[str] = None
+
+
+# Модель для запроса завершения битвы
+class BattleFinishRequest(BaseModel):
+    battle_id: str
+    user_id: int
+    result: str  # 'win' или 'lose'
+    rewards: Dict[str, Any]  # {'coins': 100, 'dust': 50, 'rating': 10}
 
 
 load_dotenv()
@@ -369,6 +376,98 @@ async def battle_turn(request: TurnRequest):
     except Exception as e:
         logger.exception(f"Error in battle_turn: {e}")
         return {"success": False, "error": str(e)}
+
+
+@app.post("/api/battle/finish")
+async def finish_battle(data: BattleFinishRequest):
+    """
+    Сохраняет результат битвы и начисляет награды пользователю
+    """
+    logger.info(f"Получен запрос на завершение битвы: battle_id={data.battle_id}, user_id={data.user_id}, result={data.result}")
+
+    async with AsyncSessionLocal() as session:
+        try:
+            # Получаем пользователя из БД
+            user = await session.get(User, data.user_id)
+
+            if not user:
+                logger.error(f"Пользователь {data.user_id} не найден")
+                return {"success": False, "error": "User not found"}
+
+            # Получаем награды (с безопасным извлечением)
+            coins = data.rewards.get("coins", 0)
+            dust = data.rewards.get("dust", 0)
+            rating = data.rewards.get("rating", 0)
+
+            # Обновляем баланс пользователя
+            user.coins += coins
+            user.dust += dust
+            user.rating += rating
+
+            # Добавляем запись в историю битв (если есть такая таблица)
+            # battle_history = BattleHistory(
+            #     user_id=data.user_id,
+            #     battle_id=data.battle_id,
+            #     result=data.result,
+            #     coins_earned=coins,
+            #     dust_earned=dust,
+            #     rating_earned=rating,
+            #     created_at=datetime.utcnow()
+            # )
+            # session.add(battle_history)
+
+            # Обновляем статус битвы (если нужно)
+            # await session.execute(
+            #     update(Battle)
+            #     .where(Battle.id == data.battle_id)
+            #     .values(status='finished', winner=data.result)
+            # )
+
+            # Сохраняем изменения
+            await session.commit()
+
+            logger.info(f"✅ Награды успешно начислены пользователю {data.user_id}: +{coins} монет, +{dust} пыли, +{rating} рейтинга")
+
+            return {
+                "success": True,
+                "message": "Rewards saved successfully",
+                "new_balances": {
+                    "coins": user.coins,
+                    "dust": user.dust,
+                    "rating": user.rating
+                }
+            }
+
+        except Exception as e:
+            await session.rollback()
+            logger.error(f"❌ Ошибка при сохранении наград: {str(e)}")
+            return {"success": False, "error": str(e)}
+
+# # Дополнительный эндпоинт для получения истории битв пользователя (опционально)
+# @app.get("/api/user/{user_id}/battle-history")
+# async def get_user_battle_history(user_id: int):
+#     """
+#     Возвращает историю битв пользователя
+#     """
+#     async with AsyncSessionLocal() as session:
+#         try:
+#             # Здесь должен быть запрос к таблице истории битв
+#             # history = await session.execute(
+#             #     select(BattleHistory)
+#             #     .where(BattleHistory.user_id == user_id)
+#             #     .order_by(BattleHistory.created_at.desc())
+#             #     .limit(50)
+#             # )
+#             # battles = history.scalars().all()
+
+#             # Пока возвращаем заглушку
+#             return {
+#                 "success": True,
+#                 "history": []  # battles
+#             }
+#         except Exception as e:
+#             logger.error(f"Ошибка получения истории: {str(e)}")
+#             return {"success": False, "error": str(e)}
 
 
 async def create_test_battle(battle_id: str):
