@@ -329,6 +329,13 @@
                 const data = await response.json();
                 
                 console.log('Получены данные:', data);
+
+                // Логируем структуру карт для отладки
+                if (data.success && data.player_cards && data.player_cards.length > 0) {
+                    console.log('Пример карты игрока:', data.player_cards[0]);
+                    console.log('Поле is_alive:', data.player_cards[0].is_alive);
+                    console.log('Здоровье:', data.player_cards[0].health);
+                }
                 
                 if (data.success) {
                     // Преобразуем массивы карт в объекты для быстрого доступа
@@ -346,25 +353,6 @@
                     document.getElementById('battle-sections').style.display = 'flex';
                     document.getElementById('battle-log').style.display = 'block';
                     document.getElementById('battle-controls').style.display = 'flex';
-                    // Добавляем поддержку touch событий
-                    document.querySelectorAll('.card-slot').forEach(el => {
-                        el.addEventListener('touchstart', (e) => {
-                            e.preventDefault();
-                            const cardId = e.currentTarget.getAttribute('data-card-id');
-                            if (cardId) selectCard(cardId);
-                        });
-                    });
-
-                    // И обновите кнопки
-                    document.getElementById('nextTurnBtn').addEventListener('touchstart', (e) => {
-                        e.preventDefault();
-                        nextTurn();
-                    });
-
-                    document.getElementById('autoBattleBtn').addEventListener('touchstart', (e) => {
-                        e.preventDefault();
-                        autoBattle();
-                    });
                     
                     renderBattle();
                     
@@ -392,15 +380,17 @@
         function renderPlayerCards() {
             const container = document.getElementById('player-cards');
             container.innerHTML = '';
-            
+
             // Сортируем карты по позиции
             const sortedCards = Object.values(playerCards).sort((a, b) => a.position - b.position);
-            
+
             sortedCards.forEach(card => {
-                if (!card.is_alive) return;
-                
+                // Проверяем жива ли карта (поддержка обоих форматов)
+                const isAlive = card.is_alive !== undefined ? card.is_alive : card.health > 0;
+                if (!isAlive) return;
+
                 const healthPercent = (card.health / card.max_health) * 100;
-                
+
                 const cardEl = document.createElement('div');
                 cardEl.setAttribute('data-card-id', card.id);
                 cardEl.className = 'card-slot';
@@ -427,15 +417,17 @@
         function renderEnemyCards() {
             const container = document.getElementById('enemy-cards');
             container.innerHTML = '';
-            
+
             // Сортируем карты по позиции
             const sortedCards = Object.values(enemyCards).sort((a, b) => a.position - b.position);
-            
+
             sortedCards.forEach(card => {
-                if (!card.is_alive) return;
-                
+                // Проверяем жива ли карта (поддержка обоих форматов)
+                const isAlive = card.is_alive !== undefined ? card.is_alive : card.health > 0;
+                if (!isAlive) return;
+
                 const healthPercent = (card.health / card.max_health) * 100;
-                
+
                 const cardEl = document.createElement('div');
                 cardEl.setAttribute('data-card-id', card.id);
                 cardEl.className = 'enemy-card';
@@ -892,6 +884,12 @@
         
         // Загружаем данные при старте
         loadBattle();
+
+        document.addEventListener("DOMContentLoaded", () => {
+            if (window.Telegram && Telegram.WebApp) {
+                Telegram.WebApp.ready();
+            }
+        });
         
         // Обработка ошибок
         window.onerror = function(msg, url, line) {
@@ -899,13 +897,6 @@
             addLog(`❌ Ошибка: ${msg}`);
             return false;
         };
-        
-
-        document.addEventListener("DOMContentLoaded", () => {
-            if (window.Telegram && Telegram.WebApp) {
-                Telegram.WebApp.ready();
-            }
-        });
 
     </script>
 </body>

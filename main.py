@@ -242,6 +242,15 @@ async def get_battle(battle_id: str):
 
         logger.info(f"Battle {battle_id} found: {len(battle_data.get('player_cards', []))} player cards")
 
+        # Гарантируем наличие поля is_alive в каждой карте
+        for card in battle_data.get("player_cards", []):
+            if "is_alive" not in card:
+                card["is_alive"] = card.get("health", 0) > 0
+
+        for card in battle_data.get("enemy_cards", []):
+            if "is_alive" not in card:
+                card["is_alive"] = card.get("health", 0) > 0
+
         return {
             "success": True,
             "player_cards": battle_data.get("player_cards", []),
