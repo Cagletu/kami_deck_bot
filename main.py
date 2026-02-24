@@ -233,28 +233,35 @@ async def health_check():
 async def get_battle(battle_id: str):
     """Получить состояние битвы"""
     try:
-        # ВАЖНО: добавляем префикс battle: при поиске
-        battle_data = await battle_storage.get_battle(f"battle:{battle_id}")
-        if not battle_data:
-            # Пробуем без префикса для обратной совместимости
-            battle_data = await battle_storage.get_battle(battle_id)
+        # ✅ ПРАВИЛЬНО: battle_storage сам добавит префикс battle:
+        battle_data = await battle_storage.get_battle(battle_id)
 
         if not battle_data:
             logger.error(f"Battle {battle_id} not found in Redis")
+
             # Для отладки - проверим все ключи в Redis
             try:
                 import redis.asyncio as redis
-                r = redis.from_url(
-                    os.getenv("REDIS_URL", "redis://localhost:6379"))
+                r = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"), decode_responses=True)
                 keys = await r.keys("*")
                 logger.info(f"Available Redis keys: {keys}")
-            except:
-                pass
-            return {"success": False, "error": "Battle not found"}
 
-        logger.info(
-            f"Battle {battle_id} found: {len(battle_data.get('player_cards', []))} player cards"
-        )
+                # Проверим есть ли ключ с таким ID
+                if f"battle:{battle_id}" in keys:
+                    logger.info(f"Key battle:{battle_id} exists but get_battle failed")
+                    # Попробуем получить напрямую
+                    data = await r.get(f"battle:{battle_id}")
+                    if data:
+                        import json
+                        battle_data = json.loads(data)
+                        logger.info("Direct Redis access succeeded")
+            except Exception as e:
+                logger.error(f"Redis debug error: {e}")
+
+            if not battle_data:
+                return {"success": False, "error": "Battle not found"}
+
+        logger.info(f"Battle {battle_id} found: {len(battle_data.get('player_cards', []))} player cards")
 
         return {
             "success": True,
@@ -610,6 +617,78 @@ async def debug_battle(battle_id: str):
         }
     except Exception as e:
         return {"status": "error", "error": str(e)}
+
+# удалить после тестирования
+@app.get("/debug/create-test-battle")
+async def create_test_battle_endpoint():
+    """Создает тестовую битву для проверки"""
+    import uuid
+    battle_id = str(uuid.uuid4())
+
+    player_cards = [{
+        "id": 1,
+        "user_card_id": 1,
+        "name": "Тестовая карта 1",
+        "rarity": "A",
+        "power": 100,
+        "health": 500,
+        "max_health": 500,
+        "attack": 50,
+        "defense": 30,
+        "level": 1,
+        "image_url": "",
+        "position": 0,
+        "is_alive": True
+    }, {
+        "id": 2,
+        "user_card_id": 2,
+        "name": "Тестовая карта 2",
+        "rarity": "S",
+        "power": 150,
+        "health": 450,
+        "max_health": 450,
+        "attack": 70,
+        "defense": 40,
+        "level": 2,
+        "image_url": "",
+        "position": 1,
+        "is_alive": True
+    }]
+
+    enemy_cards = [{
+        "id": -1,
+        "user_card_id": -1,
+        "name": "Тестовый враг 1",
+        "rarity": "B",
+        "power": 80,
+        "health": 400,
+        "max_health": 400,
+        "attack": 40,
+        "defense": 20,
+        "level": 1,
+        "image_url": "",
+        "position": 0,
+        "is_alive": True
+    }]
+
+    battle_data = {
+        "user_id": 12345,
+        "opponent_id": None,
+        "player_cards": player_cards,
+        "enemy_cards": enemy_cards,
+        "turn": 0,
+        "winner": None,
+        "created_at": datetime.now().isoformat()
+    }
+
+    await battle_storage.save_battle(battle_id, battle_data)
+
+    return {
+        "success": True,
+        "battle_id": battle_id,
+        "url": f"/api/battle/{battle_id}",
+        "debug_url": f"/debug/battle/{battle_id}"
+    }
 
 
 @app.exception_handler(Exception)

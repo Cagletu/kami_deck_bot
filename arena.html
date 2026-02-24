@@ -276,7 +276,6 @@
         let enemyCards = {};
         let currentTurn = 0;
         let battleLog = [];
-        let telegramUserId = null;
         
         try {
             // Проверяем, открыто ли приложение в Telegram
@@ -287,9 +286,6 @@
                 tg.ready();
                 tg.enableClosingConfirmation();
 
-                if (tg.initDataUnsafe?.user?.id) {
-                    telegramUserId = tg.initDataUnsafe.user.id;
-                }
                 console.log('Telegram WebApp инициализирован');
 
                 // Добавляем обработчик закрытия
@@ -361,13 +357,9 @@
                         e.preventDefault();
                         autoBattle();
                     });
-
-                    document.querySelector('.button.close').addEventListener('touchstart', (e) => {
-                        e.preventDefault();
-                        closeArena();
-                    });
                     
                     renderBattle();
+                    
                     addLog('⚔️ Битва началась!');
                 } else {
                     showError(data.error || 'Не удалось загрузить битву');
@@ -781,7 +773,6 @@
                     },
                     body: JSON.stringify({
                         battle_id: battleId,
-                        user_id: telegramUserId,
                         result: result,
                         rewards: rewards
                     })
@@ -848,40 +839,37 @@
             `;
             logContainer.appendChild(rewardsEl);
         }
+
         
         function closeArena() {
-            if (tg && tg.close) {
+            if (tg && isTelegramEnvironment) {
                 // Пытаемся отправить сообщение о закрытии
                 try {
-                    tg.sendData(JSON.stringify({ 
-                        action: 'close_arena',
-                        battle_id: battleId 
-                    }));
-                    // Даем время на отправку
-                    setTimeout(() => {
-                        tg.close();
-                    }, 300);
-                } catch (e) {
-                    console.log('Ошибка отправки данных при закрытии');
-                    tg.close();
-                }
-            } else {
-                // Если не в Telegram, показываем сообщение и перенаправляем
-                if (confirm('Закрыть арену и вернуться в бота?')) {
-                    // Пытаемся отправить данные через Telegram (если есть)
-                    if (tg && tg.sendData) {
+                    if (tg.sendData) {
                         tg.sendData(JSON.stringify({ 
                             action: 'close_arena',
                             battle_id: battleId 
                         }));
+                    }
+                    // Для мобильных устройств
+                    if (tg.close) {
                         setTimeout(() => {
                             tg.close();
                         }, 300);
                     }
-                    // Возвращаемся в бота (вместо перенаправления)
-                    if (tg) {
-                        tg.close();
-                    }
+                } catch (e) {
+                    console.log('Ошибка отправки данных при закрытии');
+                    if (tg.close) tg.close();
+                }
+            } else {
+                // Если не в Telegram, показываем сообщение
+                if (confirm('Закрыть арену и вернуться в бота?')) {
+                    // Пробуем открыть бота
+                    window.location.href = 'tg://resolve?domain=KamiDeckBot';
+                    // Если не сработало, показываем сообщение
+                    setTimeout(() => {
+                        alert('Нажмите кнопку "Назад" в браузере');
+                    }, 500);
                 }
             }
         }
