@@ -276,6 +276,9 @@
         let enemyCards = {};
         let currentTurn = 0;
         let battleLog = [];
+
+        console.log('Current URL:', window.location.href);
+        console.log('Search params:', window.location.search);
         
         try {
             // Проверяем, открыто ли приложение в Telegram
@@ -302,12 +305,17 @@
         // Получаем battle_id из URL
         function getBattleIdFromUrl() {
             const urlParams = new URLSearchParams(window.location.search);
-            return urlParams.get('battle_id');
+            const id = urlParams.get('battle_id');
+            console.log('Extracted battle_id:', id);
+            return id;
         }
         
         // Загружаем данные битвы
         async function loadBattle() {
             battleId = getBattleIdFromUrl();
+
+            console.log('URL params:', window.location.search);
+            console.log('Battle ID from URL:', battleId);
             
             if (!battleId) {
                 showError('ID битвы не найден в URL');

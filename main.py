@@ -233,33 +233,12 @@ async def health_check():
 async def get_battle(battle_id: str):
     """Получить состояние битвы"""
     try:
-        # ✅ ПРАВИЛЬНО: battle_storage сам добавит префикс battle:
+        logger.info(f"Getting battle {battle_id} from Redis")
         battle_data = await battle_storage.get_battle(battle_id)
 
         if not battle_data:
             logger.error(f"Battle {battle_id} not found in Redis")
-
-            # Для отладки - проверим все ключи в Redis
-            try:
-                import redis.asyncio as redis
-                r = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"), decode_responses=True)
-                keys = await r.keys("*")
-                logger.info(f"Available Redis keys: {keys}")
-
-                # Проверим есть ли ключ с таким ID
-                if f"battle:{battle_id}" in keys:
-                    logger.info(f"Key battle:{battle_id} exists but get_battle failed")
-                    # Попробуем получить напрямую
-                    data = await r.get(f"battle:{battle_id}")
-                    if data:
-                        import json
-                        battle_data = json.loads(data)
-                        logger.info("Direct Redis access succeeded")
-            except Exception as e:
-                logger.error(f"Redis debug error: {e}")
-
-            if not battle_data:
-                return {"success": False, "error": "Battle not found"}
+            return {"success": False, "error": "Battle not found"}
 
         logger.info(f"Battle {battle_id} found: {len(battle_data.get('player_cards', []))} player cards")
 
@@ -688,6 +667,25 @@ async def create_test_battle_endpoint():
         "battle_id": battle_id,
         "url": f"/api/battle/{battle_id}",
         "debug_url": f"/debug/battle/{battle_id}"
+    }
+
+@app.get("/test-battle-access")
+async def test_battle_access():
+    """Проверяет доступ к API битвы"""
+    import uuid
+    battle_id = str(uuid.uuid4())
+
+    # Создаем тестовую битву
+    await create_test_battle(battle_id)
+
+    # Пробуем ее получить
+    battle_data = await battle_storage.get_battle(battle_id)
+
+    return {
+        "created_battle_id": battle_id,
+        "battle_exists": battle_data is not None,
+        "api_url": f"/api/battle/{battle_id}",
+        "test_url": f"/debug/battle/{battle_id}"
     }
 
 
