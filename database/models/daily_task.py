@@ -1,8 +1,18 @@
-from sqlalchemy import Column, Integer, ForeignKey, DateTime, String, JSON, Boolean, Enum
+from sqlalchemy import (
+    Column,
+    Integer,
+    ForeignKey,
+    DateTime,
+    String,
+    JSON,
+    Boolean,
+    Enum,
+)
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from database.base import Base
 import enum
+
 
 class TaskType(enum.Enum):
     OPEN_PACK = "open_pack"
@@ -12,8 +22,10 @@ class TaskType(enum.Enum):
     UPGRADE_CARD = "upgrade_card"
     DUST_CARD = "dust_card"
 
+
 class DailyTask(Base):
     """Ежедневные задания (3 из 10 возможных)"""
+
     __tablename__ = "daily_tasks"
 
     id = Column(Integer, primary_key=True)

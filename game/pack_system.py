@@ -11,7 +11,7 @@ PACK_SETTINGS = {
             "S": 2.5,
             "SSS": 0.5,
         },
-    "pity_a": 10,
-    "pity_s": 50
+        "pity_a": 10,
+        "pity_s": 50,
     }
 }

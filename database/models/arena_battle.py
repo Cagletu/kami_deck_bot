@@ -4,8 +4,10 @@ from sqlalchemy.orm import relationship
 from database.base import Base
 from sqlalchemy.dialects.postgresql import JSONB
 
+
 class ArenaBattle(Base):
     """Битва на арене"""
+
     __tablename__ = "arena_battles"
 
     id = Column(Integer, primary_key=True)

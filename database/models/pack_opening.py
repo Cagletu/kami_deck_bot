@@ -3,8 +3,10 @@ from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from database.base import Base
 
+
 class PackOpening(Base):
     """Открытие пачки с pity-системой"""
+
     __tablename__ = "pack_openings"
 
     id = Column(Integer, primary_key=True)

@@ -4,10 +4,10 @@ import os
 import logging
 from typing import Optional, Dict
 
-
 logger = logging.getLogger(__name__)
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+
 
 class BattleStorage:
     def __init__(self):
@@ -28,11 +28,7 @@ class BattleStorage:
         if not self.redis:
             await self.connect()
         key = f"battle:{battle_id}"
-        await self.redis.setex(
-            key,
-            ttl,
-            json.dumps(battle_data, default=str)
-        )
+        await self.redis.setex(key, ttl, json.dumps(battle_data, default=str))
         logger.info(f"✅ Battle {battle_id} saved to Redis")
 
     async def get_battle(self, battle_id: str) -> Optional[Dict]:

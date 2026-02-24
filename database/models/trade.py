@@ -1,8 +1,18 @@
-from sqlalchemy import Column, Integer, ForeignKey, DateTime, Boolean, JSON, Enum, String
+from sqlalchemy import (
+    Column,
+    Integer,
+    ForeignKey,
+    DateTime,
+    Boolean,
+    JSON,
+    Enum,
+    String,
+)
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from database.base import Base
 import enum
+
 
 class TradeStatus(enum.Enum):
     PENDING = "pending"
@@ -12,8 +22,10 @@ class TradeStatus(enum.Enum):
     CANCELLED = "cancelled"
     EXPIRED = "expired"  # Истек срок
 
+
 class Trade(Base):
     """Обмен картами с ограничениями"""
+
     __tablename__ = "trades"
 
     id = Column(Integer, primary_key=True)

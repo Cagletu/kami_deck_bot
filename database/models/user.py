@@ -2,8 +2,10 @@ from sqlalchemy import Column, Integer, String, BigInteger, DateTime, JSON
 from sqlalchemy.sql import func
 from database.base import Base
 
+
 class User(Base):
     """Модель игрока"""
+
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True)

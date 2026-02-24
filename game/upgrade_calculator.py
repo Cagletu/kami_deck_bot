@@ -8,7 +8,7 @@ from game.constants import (
     RARITY_GROWTH_BONUS,
     TEN_LEVEL_BONUS,
     DUST_PER_RARITY,
-    UPGRADE_COST_PER_LEVEL
+    UPGRADE_COST_PER_LEVEL,
 )
 
 
@@ -29,20 +29,20 @@ def calculate_stats_for_level(card: Card, level: int) -> dict:
 
     # Скрытый бонус роста по редкости
     rarity_growth = RARITY_GROWTH_BONUS.get(card.rarity, 1.0)
-    power *= (rarity_growth ** (level - 1))
-    health *= (rarity_growth ** (level - 1))
-    attack *= (rarity_growth ** (level - 1))
-    defense *= (rarity_growth ** (level - 1))
+    power *= rarity_growth ** (level - 1)
+    health *= rarity_growth ** (level - 1)
+    attack *= rarity_growth ** (level - 1)
+    defense *= rarity_growth ** (level - 1)
 
     # Бонус каждые 10 уровней (одинаковый для всех)
     ten_level_steps = (level - 1) // 10
     if ten_level_steps > 0:
-        bonus_mult = TEN_LEVEL_BONUS ** ten_level_steps
+        bonus_mult = TEN_LEVEL_BONUS**ten_level_steps
         power *= bonus_mult
         health *= bonus_mult
         attack *= bonus_mult
         defense *= bonus_mult
-    
+
     # Бонус за редкость
     rarity_mult = RARITY_BONUS.get(card.rarity, 1.0)
     power = int(power * rarity_mult)
@@ -51,10 +51,10 @@ def calculate_stats_for_level(card: Card, level: int) -> dict:
     defense = int(defense * rarity_mult)
 
     return {
-        'power': int(power),
-        'health': int(health),
-        'attack': int(attack),
-        'defense': int(defense)
+        "power": int(power),
+        "health": int(health),
+        "attack": int(attack),
+        "defense": int(defense),
     }
 
 
@@ -66,6 +66,5 @@ def get_upgrade_cost(card: Card, current_level: int) -> int:
     # Первые 10 уровней дешевле (приятный UX)
     if current_level < 10:
         cost = int(cost * 0.5)
-    
+
     return cost
-    

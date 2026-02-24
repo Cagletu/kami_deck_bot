@@ -3,8 +3,10 @@ from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from database.base import Base
 
+
 class UserCard(Base):
     """Связь пользователь-карточка (инвентарь)"""
+
     __tablename__ = "user_cards"
 
     id = Column(Integer, primary_key=True)

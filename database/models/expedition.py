@@ -1,22 +1,36 @@
-from sqlalchemy import ARRAY, Boolean, Column, Integer, ForeignKey, DateTime, String, JSON, Enum  # ← ДОБАВЬТЕ Boolean
+from sqlalchemy import (
+    ARRAY,
+    Boolean,
+    Column,
+    Integer,
+    ForeignKey,
+    DateTime,
+    String,
+    JSON,
+    Enum,
+)  # ← ДОБАВЬТЕ Boolean
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from database.base import Base
 import enum
 
+
 class ExpeditionType(enum.Enum):
-    SHORT = "short"      # 30 мин
-    MEDIUM = "medium"    # 2 часа
-    LONG = "long"        # 6 часов
+    SHORT = "short"  # 30 мин
+    MEDIUM = "medium"  # 2 часа
+    LONG = "long"  # 6 часов
     SPECIAL = "special"  # Событийная
+
 
 class ExpeditionStatus(enum.Enum):
     ACTIVE = "active"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
 
+
 class Expedition(Base):
     """Экспедиция (основной фарм)"""
+
     __tablename__ = "expeditions"
 
     id = Column(Integer, primary_key=True)
@@ -29,7 +43,7 @@ class Expedition(Base):
 
     # Карты в экспедиции
     card_ids = Column(ARRAY(Integer))
-  # [1, 2, 3] - ID из user_cards
+    # [1, 2, 3] - ID из user_cards
 
     # Награды (определяются при создании)
     reward_coins = Column(Integer)
@@ -39,7 +53,7 @@ class Expedition(Base):
 
     # Бонусы
     anime_bonus = Column(Boolean, default=False)  # Бонус за карты из одного аниме
-    rarity_bonus = Column(Integer, default=0)     # Бонус за редкость
+    rarity_bonus = Column(Integer, default=0)  # Бонус за редкость
 
     # Время
     started_at = Column(DateTime, server_default=func.now())

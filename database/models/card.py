@@ -3,10 +3,14 @@ from sqlalchemy.sql import func, text
 from database.base import Base
 from sqlalchemy.dialects.postgresql import JSONB
 
+
 class Card(Base):
     """Модель карточки (полностью соответствует существующей таблице)"""
+
     __tablename__ = "cards"
-    __table_args__ = {'extend_existing': True}  # ВАЖНО: говорим SQLAlchemy расширять существующую таблицу
+    __table_args__ = {
+        "extend_existing": True
+    }  # ВАЖНО: говорим SQLAlchemy расширять существующую таблицу
 
     id = Column(Integer, primary_key=True)
     original_url = Column(Text, unique=True, nullable=False)
@@ -19,15 +23,15 @@ class Card(Base):
     image_data = Column(JSONB)
 
     # Игровые статы
-    base_power = Column(Integer, server_default=text('100'))
-    base_health = Column(Integer, server_default=text('100'))
-    base_attack = Column(Integer, server_default=text('10'))
-    base_defense = Column(Integer, server_default=text('10'))
+    base_power = Column(Integer, server_default=text("100"))
+    base_health = Column(Integer, server_default=text("100"))
+    base_attack = Column(Integer, server_default=text("10"))
+    base_defense = Column(Integer, server_default=text("10"))
 
     # Уровень и прогресс
-    level = Column(Integer, server_default=text('1'))
-    max_level = Column(Integer, server_default=text('50'))
-    experience = Column(Integer, server_default=text('0'))
+    level = Column(Integer, server_default=text("1"))
+    max_level = Column(Integer, server_default=text("50"))
+    experience = Column(Integer, server_default=text("0"))
     file_format = Column(Text, server_default=text("'webp'::text"))
 
     # Время

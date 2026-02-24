@@ -9,16 +9,16 @@ from database.models.arena_battle import ArenaBattle
 from database.models.trade import Trade, TradeStatus
 
 __all__ = [
-    'User',
-    'Card',
-    'UserCard',
-    'PackOpening',
-    'Expedition',
-    'ExpeditionType',
-    'ExpeditionStatus',
-    'DailyTask',
-    'TaskType',
-    'ArenaBattle',
-    'Trade',
-    'TradeStatus',
+    "User",
+    "Card",
+    "UserCard",
+    "PackOpening",
+    "Expedition",
+    "ExpeditionType",
+    "ExpeditionStatus",
+    "DailyTask",
+    "TaskType",
+    "ArenaBattle",
+    "Trade",
+    "TradeStatus",
 ]

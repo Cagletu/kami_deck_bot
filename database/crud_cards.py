@@ -12,18 +12,15 @@ from game.constants import DUST_PER_RARITY, UPGRADE_COST_PER_LEVEL, MAX_CARD_LEV
 logger = logging.getLogger(__name__)
 
 
-async def get_user_card_detail(user_card_id: int, user_id: int) -> Optional[Tuple[UserCard, Card]]:
+async def get_user_card_detail(
+    user_card_id: int, user_id: int
+) -> Optional[Tuple[UserCard, Card]]:
     """Получить детальную информацию о карте пользователя"""
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(UserCard, Card)
             .join(Card, UserCard.card_id == Card.id)
-            .where(
-                and_(
-                    UserCard.id == user_card_id,
-                    UserCard.user_id == user_id
-                )
-            )
+            .where(and_(UserCard.id == user_card_id, UserCard.user_id == user_id))
         )
         return result.first()
 
@@ -35,12 +32,7 @@ async def upgrade_user_card(user_card_id: int, user_id: int) -> Optional[UserCar
         result = await session.execute(
             select(UserCard, Card)
             .join(Card, UserCard.card_id == Card.id)
-            .where(
-                and_(
-                    UserCard.id == user_card_id,
-                    UserCard.user_id == user_id
-                )
-            )
+            .where(and_(UserCard.id == user_card_id, UserCard.user_id == user_id))
         )
         data = result.first()
 
@@ -51,7 +43,9 @@ async def upgrade_user_card(user_card_id: int, user_id: int) -> Optional[UserCar
 
         # Проверка максимального уровня
         if user_card.level >= MAX_CARD_LEVEL:
-            raise ValueError(f"Карта уже достигла максимального уровня {MAX_CARD_LEVEL}")
+            raise ValueError(
+                f"Карта уже достигла максимального уровня {MAX_CARD_LEVEL}"
+            )
 
         # Расчет стоимости улучшения
         rarity_multiplier = DUST_PER_RARITY.get(card.rarity, 10)
@@ -60,7 +54,9 @@ async def upgrade_user_card(user_card_id: int, user_id: int) -> Optional[UserCar
         # Получаем пользователя для проверки пыли
         user = await session.get(User, user_id)
         if user.dust < upgrade_cost:
-            raise ValueError(f"Недостаточно пыли! Нужно: {upgrade_cost}, у вас: {user.dust}")
+            raise ValueError(
+                f"Недостаточно пыли! Нужно: {upgrade_cost}, у вас: {user.dust}"
+            )
 
         # Снимаем пыль
         user.dust -= upgrade_cost
@@ -72,12 +68,13 @@ async def upgrade_user_card(user_card_id: int, user_id: int) -> Optional[UserCar
 
         # Пересчитываем характеристики
         from game.upgrade_calculator import calculate_stats_for_level
+
         new_stats = calculate_stats_for_level(card, user_card.level)
 
-        user_card.current_power = new_stats['power']
-        user_card.current_health = new_stats['health']
-        user_card.current_attack = new_stats['attack']
-        user_card.current_defense = new_stats['defense']
+        user_card.current_power = new_stats["power"]
+        user_card.current_health = new_stats["health"]
+        user_card.current_attack = new_stats["attack"]
+        user_card.current_defense = new_stats["defense"]
 
         await session.commit()
         await session.refresh(user_card)
@@ -91,12 +88,8 @@ async def toggle_favorite(user_card_id: int, user_id: int) -> bool:
     """Добавить/убрать карту из избранного"""
     async with AsyncSessionLocal() as session:
         result = await session.execute(
-            select(UserCard)
-            .where(
-                and_(
-                    UserCard.id == user_card_id,
-                    UserCard.user_id == user_id
-                )
+            select(UserCard).where(
+                and_(UserCard.id == user_card_id, UserCard.user_id == user_id)
             )
         )
         user_card = result.scalar_one_or_none()
@@ -115,23 +108,15 @@ async def toggle_in_deck(user_card_id: int, user_id: int) -> bool:
     async with AsyncSessionLocal() as session:
         # Проверяем сколько карт уже в колоде
         result = await session.execute(
-            select(UserCard)
-            .where(
-                and_(
-                    UserCard.user_id == user_id,
-                    UserCard.is_in_deck == True
-                )
+            select(UserCard).where(
+                and_(UserCard.user_id == user_id, UserCard.is_in_deck == True)
             )
         )
         deck_cards = result.scalars().all()
 
         result = await session.execute(
-            select(UserCard)
-            .where(
-                and_(
-                    UserCard.id == user_card_id,
-                    UserCard.user_id == user_id
-                )
+            select(UserCard).where(
+                and_(UserCard.id == user_card_id, UserCard.user_id == user_id)
             )
         )
         user_card = result.scalar_one_or_none()

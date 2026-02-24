@@ -4,9 +4,11 @@ import math
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass, asdict
 
+
 @dataclass
 class BattleCard:
     """Карта в бою"""
+
     id: int
     user_card_id: int
     name: str
@@ -45,12 +47,14 @@ class BattleCard:
             "level": self.level,
             "image_url": self.image_url,
             "position": self.position,
-            "is_alive": self.is_alive()
+            "is_alive": self.is_alive(),
         }
+
 
 @dataclass
 class BattleAction:
     """Действие в бою"""
+
     attacker_id: int
     attacker_name: str
     defender_id: int
@@ -59,6 +63,7 @@ class BattleAction:
     is_critical: bool = False
     is_dodged: bool = False
     is_dead: bool = False
+
 
 class ArenaBattle:
     """Система боя на арене"""
@@ -90,7 +95,9 @@ class ArenaBattle:
 
         return synergies
 
-    def _calculate_damage(self, attacker: BattleCard, defender: BattleCard) -> Tuple[int, bool]:
+    def _calculate_damage(
+        self, attacker: BattleCard, defender: BattleCard
+    ) -> Tuple[int, bool]:
         """Расчет урона с учетом критов"""
         # Базовая атака минус защита
         base_damage = max(25, attacker.attack - defender.defense // 3)
@@ -124,10 +131,10 @@ class ArenaBattle:
 
         # Если кто-то остался без карт - битва окончена
         if not alive_players:
-            self.winner = 'enemy'
+            self.winner = "enemy"
             return []
         if not alive_enemies:
-            self.winner = 'player'
+            self.winner = "player"
             return []
 
         # Копируем списки для безопасной модификации
@@ -153,7 +160,7 @@ class ArenaBattle:
                 defender_name=target.name,
                 damage=actual_damage,
                 is_critical=is_critical,
-                is_dead=not target.is_alive()
+                is_dead=not target.is_alive(),
             )
             turn_actions.append(action)
 
@@ -180,7 +187,7 @@ class ArenaBattle:
                 defender_name=target.name,
                 damage=actual_damage,
                 is_critical=is_critical,
-                is_dead=not target.is_alive()
+                is_dead=not target.is_alive(),
             )
             turn_actions.append(action)
 
@@ -189,9 +196,9 @@ class ArenaBattle:
         alive_enemies = self._get_alive_cards(False)
 
         if not alive_players:
-            self.winner = 'enemy'
+            self.winner = "enemy"
         elif not alive_enemies:
-            self.winner = 'player'
+            self.winner = "player"
 
         self.actions.extend(turn_actions)
         return turn_actions
@@ -205,7 +212,7 @@ class ArenaBattle:
             "enemy_cards": [c.to_dict() for c in self.enemy_cards.values()],
             "player_synergies": self.player_synergies,
             "enemy_synergies": self.enemy_synergies,
-            "actions": [asdict(a) for a in self.actions[-10:]]  # Последние 10 действий
+            "actions": [asdict(a) for a in self.actions[-10:]],  # Последние 10 действий
         }
 
     def auto_battle(self) -> List[BattleAction]:
@@ -215,4 +222,3 @@ class ArenaBattle:
             turn_actions = self.next_turn()
             all_actions.extend(turn_actions)
         return all_actions
-        
