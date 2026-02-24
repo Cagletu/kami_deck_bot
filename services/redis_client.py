@@ -55,4 +55,5 @@ class BattleStorage:
         await self.redis.delete(key)
         logger.info(f"✅ Battle {battle_id} deleted from Redis")
 
-    battle_storage = BattleStorage()
+
+battle_storage = BattleStorage()
