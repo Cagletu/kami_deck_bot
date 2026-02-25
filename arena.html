@@ -707,13 +707,14 @@
                                 }
                                 // ПРОВЕРЯЕМ ЧТО tg СУЩЕСТВУЕТ
                                 if (tg && tg.sendData) {
-                                    tg.sendData(JSON.stringify({ 
+                                        const resultData = JSON.stringify({ 
                                         action: 'battle_result',
                                         battle_id: battleId,
                                         result: 'win',
                                         rewards: data.rewards 
-                                    }));
-                                    console.log('Отправлены данные о победе');
+                                    });
+                                    console.log('Отправка данных о победе:', resultData);
+                                    tg.sendData(resultData);
                                     } else {
                                     console.log('tg.sendData недоступен');
                                     }
@@ -723,13 +724,14 @@
                             } else if (data.winner === 'enemy') {
                                 // ПРОВЕРЯЕМ ЧТО tg СУЩЕСТВУЕТ
                                 if (tg && tg.sendData) {
-                                    tg.sendData(JSON.stringify({ 
+                                        const resultData = JSON.stringify({ 
                                         action: 'battle_result', 
                                         result: 'lose',
                                         battle_id: battleId,
                                         rewards: data.rewards 
-                                    }));
-                                    console.log('Отправлены данные о поражении');
+                                    });
+                                    console.log('Отправка данных о поражении:', resultData);
+                                    tg.sendData(resultData);
                                 }
                                 setTimeout(() => {
                                     if (tg) tg.close();
