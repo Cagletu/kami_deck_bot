@@ -464,6 +464,19 @@ async def create_test_battle(battle_id: str):
     }
 
 
+@app.post("/api/battle/result")
+async def battle_result(request: Request):
+    """Запасной эндпоинт для результатов боя"""
+    try:
+        data = await request.json()
+        logger.info(f"Received battle result via HTTP: {data}")
+        # Здесь можно обработать результат
+        return {"success": True}
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        return {"success": False}
+
+
 # тестовый эндпоинт для проверки Redis
 @app.get("/debug/redis")
 async def debug_redis():

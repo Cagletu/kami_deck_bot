@@ -550,17 +550,26 @@
                             }
                             // ПРОВЕРЯЕМ ЧТО tg СУЩЕСТВУЕТ
                             if (tg && tg.sendData) {
-                                const resultData = JSON.stringify({ 
-                                    action: 'battle_result',
-                                    battle_id: battleId,
-                                    result: 'win',
-                                    rewards: data.rewards 
-                                });
-                                console.log('Отправка данных о победе:', resultData);
-                                console.log('📤 tg.sendData доступен:', !!tg.sendData);
-                                tg.sendData(resultData);
-                            } else {
-                                console.log('tg.sendData недоступен');
+                                try {
+                                    const resultData = JSON.stringify({ 
+                                        action: 'battle_result',
+                                        battle_id: battleId,
+                                        result: 'win',
+                                        rewards: data.rewards 
+                                    });
+                                    console.log('📤 Sending data:', resultData);
+                                    tg.sendData(resultData);
+
+                                    // Отправляем также через HTTP запрос
+                                    fetch('/api/battle/result', {
+                                        method: 'POST',
+                                        headers: {'Content-Type': 'application/json'},
+                                        body: resultData
+                                    }).catch(e => console.error('HTTP backup failed:', e));
+
+                                } catch (e) {
+                                    console.error('Send error:', e);
+                                }
                             }
                             setTimeout(() => {
                                 if (tg) tg.close();
@@ -570,21 +579,27 @@
                             if (data.rewards) {
                                 addLog(`💰 Награды: ${data.rewards.coins} монет, ${data.rewards.dust} пыли, ${data.rewards.rating} рейтинга`);
                             }
-                            // ПРОВЕРЯЕМ ЧТО tg СУЩЕСТВУЕТ
                             if (tg && tg.sendData) {
-                                const resultData = JSON.stringify({ 
-                                    action: 'battle_result', 
-                                    result: 'lose',
-                                    battle_id: battleId,
-                                    rewards: data.rewards 
-                                });
-                                console.log('Отправка данных о поражении:', resultData);
-                                tg.sendData(resultData);
-                                // Показываем уведомление
-                                tg.showAlert('🎉 Победа! Награды зачислены!');
-                            } else {
-                                console.error('❌ tg.sendData не доступен!');
-                                console.log('tg object:', tg);
+                                try {
+                                    const resultData = JSON.stringify({ 
+                                        action: 'battle_result',
+                                        battle_id: battleId,
+                                        result: 'lose',
+                                        rewards: data.rewards 
+                                    });
+                                    console.log('📤 Sending data:', resultData);
+                                    tg.sendData(resultData);
+
+                                    // Отправляем также через HTTP запрос
+                                    fetch('/api/battle/result', {
+                                        method: 'POST',
+                                        headers: {'Content-Type': 'application/json'},
+                                        body: resultData
+                                    }).catch(e => console.error('HTTP backup failed:', e));
+
+                                } catch (e) {
+                                    console.error('Send error:', e);
+                                }
                             }
                             setTimeout(() => {
                                 if (tg) tg.close();
@@ -711,33 +726,53 @@
                                 if (data.rewards) {
                                     addLog(`💰 Награды: ${data.rewards.coins} монет, ${data.rewards.dust} пыли, ${data.rewards.rating} рейтинга`);
                                 }
-                                // ПРОВЕРЯЕМ ЧТО tg СУЩЕСТВУЕТ
                                 if (tg && tg.sendData) {
+                                    try {
                                         const resultData = JSON.stringify({ 
-                                        action: 'battle_result',
-                                        battle_id: battleId,
-                                        result: 'win',
-                                        rewards: data.rewards 
-                                    });
-                                    console.log('Отправка данных о победе:', resultData);
-                                    tg.sendData(resultData);
-                                    } else {
-                                    console.log('tg.sendData недоступен');
+                                            action: 'battle_result',
+                                            battle_id: battleId,
+                                            result: 'win',
+                                            rewards: data.rewards 
+                                        });
+                                        console.log('📤 Sending data:', resultData);
+                                        tg.sendData(resultData);
+
+                                        // Отправляем также через HTTP запрос
+                                        fetch('/api/battle/result', {
+                                            method: 'POST',
+                                            headers: {'Content-Type': 'application/json'},
+                                            body: resultData
+                                        }).catch(e => console.error('HTTP backup failed:', e));
+
+                                    } catch (e) {
+                                        console.error('Send error:', e);
                                     }
+                                }
                                 setTimeout(() => {
                                     if (tg) tg.close();
                                 }, 500);
                             } else if (data.winner === 'enemy') {
-                                // ПРОВЕРЯЕМ ЧТО tg СУЩЕСТВУЕТ
                                 if (tg && tg.sendData) {
+                                    try {
                                         const resultData = JSON.stringify({ 
-                                        action: 'battle_result', 
-                                        result: 'lose',
-                                        battle_id: battleId,
-                                        rewards: data.rewards 
-                                    });
-                                    console.log('Отправка данных о поражении:', resultData);
-                                    tg.sendData(resultData);
+                                            action: 'battle_result',
+                                            battle_id: battleId,
+                                            result: 'lose',
+                                            rewards: data.rewards 
+                                        });
+                                        console.log('📤 Sending data:', resultData);
+                                        tg.sendData(resultData);
+
+                                        // Отправляем также через HTTP запрос
+                                        fetch('/api/battle/result', {
+                                            method: 'POST',
+                                            headers: {'Content-Type': 'application/json'},
+                                            body: resultData
+                                        }).catch(e => console.error('HTTP backup failed:', e));
+
+                                    } catch (e) {
+                                        console.error('Send error:', e);
+                                    }
                                 }
                                 setTimeout(() => {
                                     if (tg) tg.close();
