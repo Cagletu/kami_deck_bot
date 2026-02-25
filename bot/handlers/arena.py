@@ -287,7 +287,12 @@ async def handle_webapp_data(message: types.Message):
         logger.info(f"Battle ID: {battle_id}")
         logger.info(f"Result: {result}")
         logger.info(f"Rewards: {rewards}")
-        
+
+        # ===== ТЕСТОВЫЙ ЭНДПОИНТ =====
+        if action == "test":
+            logger.info("✅ Test data received!")
+            await message.answer("✅ Тестовые данные получены!")
+            return
 
         # ===== ОБРАБОТКА РЕЗУЛЬТАТА БИТВЫ =====
         if action == "battle_result":

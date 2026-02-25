@@ -719,71 +719,82 @@
 
                         renderBattle();
 
-                        // 🔥 ЕСЛИ БОЙ ЗАКОНЧЕН
+                        // Проверяем победителя
                         if (data.winner) {
-                            let resultData;
-                
                             if (data.winner === 'player') {
                                 addLog('🎉 ПОБЕДА!');
                                 if (data.rewards) {
                                     addLog(`💰 Награды: ${data.rewards.coins} монет, ${data.rewards.dust} пыли, ${data.rewards.rating} рейтинга`);
                                 }
-                                // ПОДГОТАВЛИВАЕМ ДАННЫЕ
-                                resultData = JSON.stringify({ 
-                                    action: 'battle_result',
-                                    battle_id: battleId,
-                                    result: 'win',
-                                    rewards: data.rewards || {coins: 50, dust: 50, rating: 20}
-                                });
-                
+                                if (tg && tg.sendData) {
+                                    try {
+                                        const resultData = JSON.stringify({ 
+                                            action: 'battle_result',
+                                            battle_id: battleId,
+                                            result: 'win',
+                                            rewards: data.rewards 
+                                        });
+                                        console.log('📤 Sending data:', resultData);
+                                        tg.sendData(resultData);
+
+                                        // Отправляем также через HTTP запрос
+                                        fetch('/api/battle/result', {
+                                            method: 'POST',
+                                            headers: {'Content-Type': 'application/json'},
+                                            body: resultData
+                                        }).catch(e => console.error('HTTP backup failed:', e));
+
+                                    } catch (e) {
+                                        console.error('Send error:', e);
+                                    }
+                                }
+                                setTimeout(() => {
+                                    if (tg) tg.close();
+                                }, 500);
                             } else if (data.winner === 'enemy') {
-                                addLog('😔 Поражение...');
-                                if (data.rewards) {
-                                    addLog(`💰 Награды: ${data.rewards.coins} монет, ${data.rewards.dust} пыли, ${data.rewards.rating} рейтинга`);
+                                if (tg && tg.sendData) {
+                                    try {
+                                        const resultData = JSON.stringify({ 
+                                            action: 'battle_result',
+                                            battle_id: battleId,
+                                            result: 'lose',
+                                            rewards: data.rewards 
+                                        });
+                                        console.log('📤 Sending data:', resultData);
+                                        tg.sendData(resultData);
+
+                                        // Отправляем также через HTTP запрос
+                                        fetch('/api/battle/result', {
+                                            method: 'POST',
+                                            headers: {'Content-Type': 'application/json'},
+                                            body: resultData
+                                        }).catch(e => console.error('HTTP backup failed:', e));
+
+                                    } catch (e) {
+                                        console.error('Send error:', e);
+                                    }
                                 }
-                                // ПОДГОТАВЛИВАЕМ ДАННЫЕ
-                                resultData = JSON.stringify({ 
-                                    action: 'battle_result',
-                                    battle_id: battleId,
-                                    result: 'lose',
-                                    rewards: data.rewards || {coins: 25, dust: 25, rating: -15}
-                                });
+                                setTimeout(() => {
+                                    if (tg) tg.close();
+                                }, 500);
                             }
-                
-                            console.log('📤 Sending data:', resultData);
-                
-                            // 🚨 ВАЖНО: ОТПРАВЛЯЕМ ЧЕРЕЗ TELEGRAM
-                            if (tg && tg.sendData) {
-                                try {
-                                    tg.sendData(resultData);
-                                    console.log('✅ Data sent via Telegram');
-                                } catch (e) {
-                                    console.error('❌ Telegram send failed:', e);
-                                }
-                            } else {
-                                console.warn('⚠️ Telegram WebApp not available');
-                                // Запасной вариант - отправляем через HTTP
-                                fetch('/api/battle/result', {
-                                    method: 'POST',
-                                    headers: {'Content-Type': 'application/json'},
-                                    body: resultData
-                                }).then(res => res.json()).then(data => {
-                                    console.log('✅ HTTP backup sent:', data);
-                                }).catch(e => {
-                                    console.error('❌ HTTP backup failed:', e);
-                                });
-                            }
-                
-                            // Закрываем WebApp через 2 секунды
-                            setTimeout(() => {
-                                if (tg) tg.close();
-                            }, 2000);
-                
-                            // Блокируем кнопку после окончания
-                            btn.disabled = true;
-                            btn.textContent = '⚡ БОЙ ОКОНЧЕН';
+
+                            break;
                         }
-                    }
+                        } else {
+                        addLog('❌ ' + (data.error || 'Ошибка сервера'));
+                        break;
+                        }
+                        } catch (error) {
+                        console.error('Ошибка:', error);
+                        addLog('❌ Ошибка соединения');
+                        break;
+                        }
+                        }
+
+                        autoBtn.disabled = false;
+                        turnBtn.disabled = false;
+                        }
 
 
         async function animateAttack(attackerId, defenderId, damage, isCritical, isPlayerAttacker = true) {
