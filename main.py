@@ -616,6 +616,33 @@ async def test_battle_access():
     }
 
 
+@app.get("/test-webapp")
+async def test_webapp():
+    return HTMLResponse("""
+    <html>
+    <body>
+        <h1>Тест WebApp</h1>
+        <script>
+            function sendTestData() {
+                const tg = window.Telegram?.WebApp;
+                if (tg) {
+                    tg.sendData(JSON.stringify({
+                        action: 'battle_result',
+                        result: 'win',
+                        rewards: {coins: 50, dust: 50, rating: 20}
+                    }));
+                    alert('Данные отправлены!');
+                } else {
+                    alert('WebApp не инициализирован');
+                }
+            }
+        </script>
+        <button onclick="sendTestData()">Отправить тестовые данные</button>
+    </body>
+    </html>
+    """)
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.exception(f"Global exception: {exc}")

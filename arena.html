@@ -557,6 +557,7 @@
                                     rewards: data.rewards 
                                 });
                                 console.log('Отправка данных о победе:', resultData);
+                                console.log('📤 tg.sendData доступен:', !!tg.sendData);
                                 tg.sendData(resultData);
                             } else {
                                 console.log('tg.sendData недоступен');
@@ -579,6 +580,11 @@
                                 });
                                 console.log('Отправка данных о поражении:', resultData);
                                 tg.sendData(resultData);
+                                // Показываем уведомление
+                                tg.showAlert('🎉 Победа! Награды зачислены!');
+                            } else {
+                                console.error('❌ tg.sendData не доступен!');
+                                console.log('tg object:', tg);
                             }
                             setTimeout(() => {
                                 if (tg) tg.close();
