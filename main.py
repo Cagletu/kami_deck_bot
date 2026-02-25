@@ -469,12 +469,15 @@ async def battle_result(request: Request):
     """Запасной эндпоинт для результатов боя"""
     try:
         data = await request.json()
-        logger.info(f"Received battle result via HTTP: {data}")
-        # Здесь можно обработать результат
-        return {"success": True}
+        logger.info(f"🔥 HTTP battle result received: {data}")
+
+        # Можно обработать результат так же, как в handle_webapp_data
+        # Но лучше перенаправить в функцию обработки
+
+        return {"success": True, "received": data}
     except Exception as e:
         logger.error(f"Error: {e}")
-        return {"success": False}
+        return {"success": False, "error": str(e)}
 
 
 # тестовый эндпоинт для проверки Redis

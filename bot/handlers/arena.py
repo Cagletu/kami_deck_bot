@@ -16,7 +16,7 @@ from database.models.card import Card
 from database.models.arena_battle import ArenaBattle as DBArenaBattle
 from game.arena_battle_system import ArenaBattle, BattleCard
 from services.redis_client import battle_storage
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -288,6 +288,12 @@ async def handle_webapp_data(message: types.Message):
         logger.info(f"Result: {result}")
         logger.info(f"Rewards: {rewards}")
 
+        # ===== ТЕСТОВЫЙ ЭНДПОИНТ =====
+        if action == "test":
+            logger.info("✅ Test data received!")
+            await message.answer("✅ Тестовые данные получены!")
+            return
+
         # ===== ОБРАБОТКА РЕЗУЛЬТАТА БИТВЫ =====
         if action == "battle_result":
             logger.info(f"🎯 Processing battle result: {result}")
@@ -310,7 +316,7 @@ async def handle_webapp_data(message: types.Message):
                 if battle_id:
                     battle_data = await battle_storage.get_battle(battle_id)
                     if battle_data:
-                        logger.info(f"✅ Battle data found in Redis")
+                        logger.info("✅ Battle data found in Redis")
                     else:
                         logger.warning(f"❌ Battle data NOT found in Redis for {battle_id}")
 
@@ -357,7 +363,7 @@ async def handle_webapp_data(message: types.Message):
 
                 # Сохраняем изменения в БД
                 await session.commit()
-                logger.info(f"✅ Battle saved to database")
+                logger.info("✅ Battle saved to database")
 
                 await session.refresh(user)
                 logger.info(f"✅ User updated: wins={user.arena_wins}, rating={user.arena_rating}, coins={user.coins}")
