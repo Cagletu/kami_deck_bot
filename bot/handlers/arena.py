@@ -221,7 +221,7 @@ async def cmd_arena(message: types.Message, user_id: int = None):
         )
         await battle_storage.save_battle(battle_id, battle_data)
 
-        # ✅ ИСПРАВЛЕНО: Используем ReplyKeyboardMarkup вместо InlineKeyboardMarkup
+        # ✅ ИСПРАВЛЕНО: Используем InlineKeyboardMarkup с web_app
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
@@ -231,9 +231,7 @@ async def cmd_arena(message: types.Message, user_id: int = None):
                     )
                 ],
                 [InlineKeyboardButton(text="« Назад", callback_data="back_to_main")],
-            ],
-            resize_keyboard=True,
-            one_time_keyboard=True,  # Клавиатура скроется после нажатия
+            ]
         )
 
         # Информация о битве

@@ -550,13 +550,14 @@
                             }
                             // ПРОВЕРЯЕМ ЧТО tg СУЩЕСТВУЕТ
                             if (tg && tg.sendData) {
-                                tg.sendData(JSON.stringify({ 
+                                const resultData = JSON.stringify({ 
                                     action: 'battle_result',
                                     battle_id: battleId,
                                     result: 'win',
                                     rewards: data.rewards 
-                                }));
-                                console.log('Отправлены данные о победе');
+                                });
+                                console.log('Отправка данных о победе:', resultData);
+                                tg.sendData(resultData);
                             } else {
                                 console.log('tg.sendData недоступен');
                             }
@@ -570,13 +571,14 @@
                             }
                             // ПРОВЕРЯЕМ ЧТО tg СУЩЕСТВУЕТ
                             if (tg && tg.sendData) {
-                                tg.sendData(JSON.stringify({ 
+                                const resultData = JSON.stringify({ 
                                     action: 'battle_result', 
                                     result: 'lose',
                                     battle_id: battleId,
                                     rewards: data.rewards 
-                                }));
-                                console.log('Отправлены данные о поражении');
+                                });
+                                console.log('Отправка данных о поражении:', resultData);
+                                tg.sendData(resultData);
                             }
                             setTimeout(() => {
                                 if (tg) tg.close();
@@ -598,8 +600,8 @@
                     addLog('❌ Ошибка соединения');
                     } finally {
                     // Проверяем, не закончился ли бой
-                    const alivePlayers = Object.values(playerCards).filter(c => c.is_alive !== false).length;
-                    const aliveEnemies = Object.values(enemyCards).filter(c => c.is_alive !== false).length;
+                    const alivePlayers = Object.values(playerCards).filter(c => (c.is_alive !== undefined ? c.is_alive : c.health > 0));
+                    const aliveEnemies = Object.values(enemyCards).filter(c => (c.is_alive !== undefined ? c.is_alive : c.health > 0));
 
                     if (alivePlayers > 0 && aliveEnemies > 0) {
                     btn.disabled = false;
