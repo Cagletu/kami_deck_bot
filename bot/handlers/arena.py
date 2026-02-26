@@ -25,6 +25,25 @@ logger = logging.getLogger(__name__)
 WEBAPP_URL = "https://kamideckbot-production.up.railway.app/arena.html"
 
 
+def generate_init_data(user_id: int, battle_id: str) -> str:
+    """
+    Генерирует имитацию init_data для передачи в URL
+    """
+    # Создаем простую структуру данных
+    data = {
+        "user_id": str(user_id),
+        "battle_id": battle_id,
+        "timestamp": str(int(datetime.now().timestamp()))
+    }
+
+    # Кодируем в JSON и затем в base64 для безопасной передачи в URL
+    import base64
+    json_str = json.dumps(data)
+    encoded = base64.b64encode(json_str.encode()).decode()
+
+    return encoded
+
+
 async def get_user_deck(user_id: int) -> list:
     """Получает колоду пользователя (до 5 карт)"""
     async with AsyncSessionLocal() as session:
@@ -221,19 +240,23 @@ async def cmd_arena(message: types.Message, user_id: int = None):
         )
         await battle_storage.save_battle(battle_id, battle_data)
 
-        from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+        # Генерируем init_data для передачи в URL
+        init_data = generate_init_data(tg_id, battle_id)
 
-        # Создаем кнопку с WebApp
-        webapp_button = KeyboardButton(
-            text="⚔️ ОТКРЫТЬ АРЕНУ",
-            web_app=WebAppInfo(url=f"{WEBAPP_URL}?battle_id={battle_id}")
-        )
+        # Создаем кнопку с WebApp и передаем данные через URL
+        webapp_url = f"{WEBAPP_URL}?battle_id={battle_id}&init_data={init_data}"
 
-        # Создаем клавиатуру с этой кнопкой
-        reply_keyboard = ReplyKeyboardMarkup(
-            keyboard=[[webapp_button]],
-            resize_keyboard=True,
-            one_time_keyboard=True
+        # ✅ ИСПРАВЛЕНО: Используем InlineKeyboardMarkup с web_app
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="⚔️ НАЧАТЬ БИТВУ",
+                        web_app=WebAppInfo(url=webapp_url),
+                    )
+                ],
+                [InlineKeyboardButton(text="« Назад", callback_data="back_to_main")],
+            ]
         )
 
 
@@ -251,30 +274,23 @@ async def cmd_arena(message: types.Message, user_id: int = None):
 <i>⚠️ После завершения боя нажмите "ЗАКРЫТЬ" в арене для получения наград</i>
 """
 
-        await message.answer(text, reply_markup=reply_keyboard)
+        await message.answer(text, reply_markup=keyboard)
 
     except Exception as e:
         logger.exception(f"Ошибка cmd_arena: {e}")
         await message.answer("❌ Произошла ошибка. Попробуйте позже.")
 
 
-# @router.callback_query(F.data == "open_arena")
-# async def open_arena(callback: types.CallbackQuery):
-#     """Обработчик кнопки открытия арены"""
-#     try:
-#         # Передаем правильный параметр
-#         await cmd_arena(callback.message, callback.from_user.id)
-#         await callback.answer()
-#     except Exception as e:
-#         logger.exception(f"Ошибка в open_arena: {e}")
-#         await callback.answer("❌ Ошибка открытия арены", show_alert=True)
-
-
-@router.message(F.text == "⚔️ ОТКРЫТЬ АРЕНУ")
-async def handle_arena_button(message: types.Message):
-    """Обработчик нажатия на кнопку арены (если нужно)"""
-    # Эта функция может быть пустой, так как WebApp откроется автоматически
-    pass
+@router.callback_query(F.data == "open_arena")
+async def open_arena(callback: types.CallbackQuery):
+    """Обработчик кнопки открытия арены"""
+    try:
+        # Передаем правильный параметр
+        await cmd_arena(callback.message, callback.from_user.id)
+        await callback.answer()
+    except Exception as e:
+        logger.exception(f"Ошибка в open_arena: {e}")
+        await callback.answer("❌ Ошибка открытия арены", show_alert=True)
 
 
 @router.message(F.web_app_data)

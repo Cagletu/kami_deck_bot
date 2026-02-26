@@ -484,6 +484,48 @@ async def battle_result(request: Request):
         return {"success": False, "error": str(e)}
 
 
+@app.post("/api/battle/verify")
+async def verify_battle_access(request: Request):
+    """Проверяет доступ к битве через init_data"""
+    try:
+        data = await request.json()
+        battle_id = data.get("battle_id")
+        init_data = data.get("init_data")
+
+        if not battle_id or not init_data:
+            return {"success": False, "error": "Missing data"}
+
+        # Декодируем init_data
+        import base64
+        import json
+
+        try:
+            decoded = json.loads(base64.b64decode(init_data).decode())
+            user_id = decoded.get("user_id")
+            timestamp = decoded.get("timestamp")
+
+            # Проверяем что битва существует и принадлежит этому пользователю
+            battle_data = await battle_storage.get_battle(battle_id)
+            if not battle_data:
+                return {"success": False, "error": "Battle not found"}
+
+            if str(battle_data.get("user_id")) != str(user_id):
+                return {"success": False, "error": "Access denied"}
+
+            return {
+                "success": True,
+                "user_id": user_id,
+                "battle_id": battle_id
+            }
+
+        except Exception as e:
+            return {"success": False, "error": f"Invalid init_data: {e}"}
+
+    except Exception as e:
+        logger.exception(f"Error in verify: {e}")
+        return {"success": False, "error": str(e)}
+
+
 # тестовый эндпоинт для проверки Redis
 @app.get("/debug/redis")
 async def debug_redis():

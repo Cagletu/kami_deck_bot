@@ -299,6 +299,41 @@
         } catch (e) {
             console.log('Ошибка инициализации Telegram WebApp:', e);
         }
+
+        // Получаем параметры из URL
+        function getUrlParams() {
+            const urlParams = new URLSearchParams(window.location.search);
+            return {
+                battle_id: urlParams.get('battle_id'),
+                init_data: urlParams.get('init_data')
+            };
+        }
+
+        // Декодируем init_data
+        function decodeInitData(encoded) {
+            try {
+                if (!encoded) return null;
+                const jsonStr = atob(encoded);
+                return JSON.parse(jsonStr);
+            } catch (e) {
+                console.error('Failed to decode init_data:', e);
+                return null;
+            }
+        }
+
+        // Загружаем данные при старте
+        const urlParams = getUrlParams();
+        battleId = urlParams.battle_id;
+        const initData = decodeInitData(urlParams.init_data);
+
+        console.log('Battle ID:', battleId);
+        console.log('Init data:', initData);
+
+        if (initData && initData.user_id) {
+            console.log('User ID from init_data:', initData.user_id);
+            // Сохраняем user_id для дальнейшего использования
+            window.userId = initData.user_id;
+        }
         
         // Получаем battle_id из URL
         function getBattleIdFromUrl() {
