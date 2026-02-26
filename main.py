@@ -466,21 +466,110 @@ async def create_test_battle(battle_id: str):
 
 @app.post("/api/battle/result")
 async def battle_result(request: Request):
-    """Запасной эндпоинт для результатов боя (использует initData)"""
+    """Эндпоинт для результатов боя с initData аутентификацией"""
     try:
         # Получаем initData из заголовка
         init_data = request.headers.get("X-Init-Data")
         logger.info(f"🔥 Battle result received with init_data: {init_data}")
 
+        if not init_data:
+            return {"success": False, "error": "Missing init_data"}
+
+        # Декодируем init_data
+        import base64
+        import json
+
+        try:
+            # Декодируем из base64
+            decoded_json = base64.b64decode(init_data).decode()
+            init_data_obj = json.loads(decoded_json)
+            logger.info(f"Decoded init_data: {init_data_obj}")
+
+            user_id = init_data_obj.get("user_id")
+            battle_id_from_init = init_data_obj.get("battle_id")
+
+            if not user_id:
+                return {"success": False, "error": "Invalid init_data: no user_id"}
+
+        except Exception as e:
+            logger.error(f"Failed to decode init_data: {e}")
+            return {"success": False, "error": f"Invalid init_data: {e}"}
+
+        # Получаем данные из тела запроса
         data = await request.json()
-        logger.info(f"Data: {data}")
+        logger.info(f"Battle result data: {data}")
 
-        # Здесь можно проверить init_data на валидность
-        # Для этого нужно создать верификатор
+        action = data.get("action")
+        battle_id = data.get("battle_id")
+        result = data.get("result")
+        rewards = data.get("rewards", {})
 
-        return {"success": True, "received": data}
+        # Проверяем что battle_id совпадает
+        if battle_id != battle_id_from_init:
+            logger.error(f"Battle ID mismatch: {battle_id} vs {battle_id_from_init}")
+            return {"success": False, "error": "Battle ID mismatch"}
+
+        if action != "battle_result":
+            return {"success": False, "error": "Invalid action"}
+
+        # Получаем пользователя по telegram_id
+        async with AsyncSessionLocal() as session:
+            from database.crud import get_user_or_create
+
+            # Важно: user_id из init_data - это telegram_id
+            user = await get_user_or_create(session, int(user_id))
+
+            if not user:
+                return {"success": False, "error": "User not found"}
+
+            logger.info(f"Updating user {user.id} with battle result: {result}")
+
+            # Начисляем награды
+            if result == "win":
+                rating_change = rewards.get("rating", 20)
+                coins_reward = rewards.get("coins", 50)
+                dust_reward = rewards.get("dust", 50)
+
+                user.arena_wins += 1
+                user.arena_rating += rating_change
+                user.coins += coins_reward
+                user.dust += dust_reward
+
+                logger.info(f"🏆 Win: +{coins_reward}💰 +{dust_reward}✨ +{rating_change}⭐")
+
+            elif result == "lose":
+                rating_change = rewards.get("rating", -15)
+                coins_reward = rewards.get("coins", 25)
+                dust_reward = rewards.get("dust", 25)
+
+                user.arena_losses += 1
+                user.arena_rating = max(0, user.arena_rating + rating_change)
+                user.coins += coins_reward
+                user.dust += dust_reward
+
+                logger.info(f"💔 Lose: +{coins_reward}💰 +{dust_reward}✨ {rating_change}⭐")
+
+            # Сохраняем изменения
+            await session.commit()
+
+            # Удаляем битву из Redis
+            if battle_id:
+                await battle_storage.delete_battle(battle_id)
+
+            return {
+                "success": True,
+                "user": {
+                    "id": user.id,
+                    "coins": user.coins,
+                    "dust": user.dust,
+                    "arena_rating": user.arena_rating,
+                    "arena_wins": user.arena_wins,
+                    "arena_losses": user.arena_losses
+                }
+            }
+
     except Exception as e:
-        logger.error(f"Error: {e}")
+        logger.exception(f"Error in battle_result: {e}")
         return {"success": False, "error": str(e)}
 
 

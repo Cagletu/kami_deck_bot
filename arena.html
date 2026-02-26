@@ -554,27 +554,33 @@
                                 addLog(`💰 Награды: +${data.rewards.coins}💰 +${data.rewards.dust}✨ +${data.rewards.rating}⭐`);
                             }
 
-                            // 👇 ИСПОЛЬЗУЕМ initData ДЛЯ ОТПРАВКИ
-                            if (tg) {
-                                // Отправляем через HTTP API (бэкенд)
-                                await fetch('/api/battle/result', {
+                            // 👇 ОТПРАВЛЯЕМ РЕЗУЛЬТАТ ЧЕРЕЗ API С initData
+                            try {
+                                // Получаем initData из URL (мы передали её при открытии)
+                                const urlParams = new URLSearchParams(window.location.search);
+                                const initData = urlParams.get('init_data');
+
+                                const response = await fetch('/api/battle/result', {
                                     method: 'POST',
                                     headers: {
                                         'Content-Type': 'application/json',
-                                        'X-Init-Data': tg.initData // 👈 ПЕРЕДАЕМ INIT DATA В ЗАГОЛОВКЕ
+                                        'X-Init-Data': initData || '' // 👈 Передаем initData в заголовке
                                     },
                                     body: JSON.stringify({
                                         action: 'battle_result',
                                         battle_id: battleId,
                                         result: 'win',
-                                        rewards: data.rewards
+                                        rewards: rewards
                                     })
                                 });
                             }
 
-                            setTimeout(() => {
-                                if (tg) tg.close();
-                            }, 2000);
+                            const data = await response.json();
+                            console.log('Battle result sent:', data);
+
+                            } catch (error) {
+                            console.error('Failed to send battle result:', error);
+                            }
 
                         } else if (data.winner === 'enemy') {
                             addLog('😔 Поражение...');
@@ -582,25 +588,34 @@
                                 addLog(`💰 Награды: +${data.rewards.coins}💰 +${data.rewards.dust}✨ ${data.rewards.rating}⭐`);
                             }
 
-                            if (tg) {
-                                await fetch('/api/battle/result', {
+                            try {
+                                const urlParams = new URLSearchParams(window.location.search);
+                                const initData = urlParams.get('init_data');
+        
+                                const response = await fetch('/api/battle/result', {
                                     method: 'POST',
                                     headers: {
                                         'Content-Type': 'application/json',
-                                        'X-Init-Data': tg.initData
+                                        'X-Init-Data': initData || ''
                                     },
                                     body: JSON.stringify({
                                         action: 'battle_result',
                                         battle_id: battleId,
                                         result: 'lose',
-                                        rewards: data.rewards
+                                        rewards: rewards
                                     })
                                 });
                             }
+                    
+                            } catch (error) {
+                                console.error('Failed to send battle result:', error);
+                            }
+                        }
 
-                            setTimeout(() => {
-                                if (tg) tg.close();
-                            }, 2000);
+                        // Закрываем через 2 секунды
+                        setTimeout(() => {
+                        if (tg) tg.close();
+                        }, 2000);
                         }
 
                         btn.disabled = true;
@@ -681,20 +696,31 @@
                                     addLog(`💰 Награды: +${data.rewards.coins}💰 +${data.rewards.dust}✨ +${data.rewards.rating}⭐`);
                                 }
 
-                                if (tg) {
-                                    await fetch('/api/battle/result', {
+                                // 👇 ОТПРАВЛЯЕМ РЕЗУЛЬТАТ ЧЕРЕЗ API С initData
+                                try {
+                                    // Получаем initData из URL (мы передали её при открытии)
+                                    const urlParams = new URLSearchParams(window.location.search);
+                                    const initData = urlParams.get('init_data');
+
+                                    const response = await fetch('/api/battle/result', {
                                         method: 'POST',
                                         headers: {
                                             'Content-Type': 'application/json',
-                                            'X-Init-Data': tg.initData
+                                            'X-Init-Data': initData || '' // 👈 Передаем initData в заголовке
                                         },
                                         body: JSON.stringify({
                                             action: 'battle_result',
                                             battle_id: battleId,
                                             result: 'win',
-                                            rewards: data.rewards
+                                            rewards: rewards
                                         })
                                     });
+
+                                    const data = await response.json();
+                                    console.log('Battle result sent:', data);
+
+                                } catch (error) {
+                                    console.error('Failed to send battle result:', error);
                                 }
 
                             } else if (data.winner === 'enemy') {
@@ -703,26 +729,34 @@
                                     addLog(`💰 Награды: +${data.rewards.coins}💰 +${data.rewards.dust}✨ ${data.rewards.rating}⭐`);
                                 }
 
-                                if (tg) {
-                                    await fetch('/api/battle/result', {
+                                try {
+                                    const urlParams = new URLSearchParams(window.location.search);
+                                    const initData = urlParams.get('init_data');
+    
+                                    const response = await fetch('/api/battle/result', {
                                         method: 'POST',
                                         headers: {
                                             'Content-Type': 'application/json',
-                                            'X-Init-Data': tg.initData
+                                            'X-Init-Data': initData || ''
                                         },
                                         body: JSON.stringify({
                                             action: 'battle_result',
                                             battle_id: battleId,
                                             result: 'lose',
-                                            rewards: data.rewards
+                                            rewards: rewards
                                         })
                                     });
+    
+                                } catch (error) {
+                                    console.error('Failed to send battle result:', error);
                                 }
                             }
-
+    
+                            // Закрываем через 2 секунды
                             setTimeout(() => {
-                                if (tg) tg.close();
+                            if (tg) tg.close();
                             }, 2000);
+                            }
 
                             break;
                         }
