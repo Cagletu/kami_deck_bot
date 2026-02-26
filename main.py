@@ -258,11 +258,10 @@ async def battle_turn(request: TurnRequest):
         if not battle_data:
             return {"success": False, "error": "Battle not found"}
 
-        # Восстанавливаем карты из сохраненных данных
+        # Восстанавливаем карты
         player_cards_dict = {}
         enemy_cards_dict = {}
 
-        # Создаем объекты карт для боя
         for card_data in battle_data.get("player_cards", []):
             card = BattleCard(
                 id=card_data["id"],
@@ -349,6 +348,29 @@ async def battle_turn(request: TurnRequest):
                 }
             )
 
+        # Рассчитываем награды и изменение рейтинга
+        rewards = None
+        if battle.winner:
+            from game.arena_ranks import calculate_rating_change
+
+            player_rating = battle_data.get("player_rating", 1000)
+            opponent_rating = battle_data.get("opponent_rating", 1000)
+
+            if battle.winner == "player":
+                rating_change = calculate_rating_change(player_rating, opponent_rating, True)
+                rewards = {
+                    "coins": 50,
+                    "dust": 50,
+                    "rating": rating_change
+                }
+            elif battle.winner == "enemy":
+                rating_change = calculate_rating_change(player_rating, opponent_rating, False)
+                rewards = {
+                    "coins": 25,
+                    "dust": 25,
+                    "rating": rating_change
+                }
+
         return {
             "success": True,
             "turn": battle.turn,
@@ -357,15 +379,7 @@ async def battle_turn(request: TurnRequest):
             "log": battle_log,
             "actions": actions_data,
             "winner": battle.winner,
-            "rewards": (
-                {"coins": 50, "dust": 50, "rating": 20}
-                if battle.winner == "player"
-                else (
-                    {"coins": 25, "dust": 25, "rating": -15}
-                    if battle.winner == "enemy"
-                    else None
-                )
-            ),
+            "rewards": rewards,
         }
 
     except Exception as e:

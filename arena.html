@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Kami Deck - Арена</title>
+    <link rel="icon" href="/static/favicon.ico">
     <style>
         body {
             margin: 0;
@@ -850,26 +851,28 @@
         function closeArena() {
             console.log('Closing arena...');
 
-            // Блокируем все кнопки чтобы избежать повторных нажатий
-            const nextBtn = document.getElementById('nextTurnBtn');
-            const autoBtn = document.getElementById('autoBattleBtn');
-
-            if (nextBtn) nextBtn.disabled = true;
-            if (autoBtn) autoBtn.disabled = true;
-
-            // Проверяем, открыто ли в Telegram
+            // Пробуем разные способы закрытия для разных платформ
             if (tg) {
                 try {
-                    // Для мобильных устройств
-                    if (typeof tg.close === 'function') {
-                        tg.close();
-                    } else {
-                        // Альтернативный способ
-                        window.location.href = 'https://t.me/KamiDeckBot';
+                    // Для мобильных устройств - используем Haptic Feedback и close
+                    if (tg.HapticFeedback) {
+                        tg.HapticFeedback.impactOccurred('light');
                     }
+
+                    // Небольшая задержка для обратной связи
+                    setTimeout(() => {
+                        try {
+                            tg.close();
+                        } catch (e) {
+                            console.error('Error closing via tg.close():', e);
+                            // Альтернативный способ для мобильных
+                            window.location.href = 'https://t.me/KamiDeckBot';
+                        }
+                    }, 100);
+
                 } catch (e) {
-                    console.error('Error closing via tg:', e);
-                    // Fallback
+                    console.error('Error in closeArena:', e);
+                    // Если не получилось, пробуем редирект
                     window.location.href = 'https://t.me/KamiDeckBot';
                 }
             } else {
@@ -877,6 +880,27 @@
                 window.location.href = 'https://t.me/KamiDeckBot';
             }
         }
+
+        // Также добавьте обработчик для кнопки "назад" браузера
+        window.addEventListener('popstate', function(event) {
+            // Предотвращаем стандартное поведение
+            event.preventDefault();
+
+            // Закрываем WebApp
+            if (tg) {
+                tg.close();
+            }
+        });
+
+        // Блокируем стандартное свайп-назад в некоторых браузерах
+        document.addEventListener('touchstart', function(e) {
+            if (e.touches.length === 1) {
+                const touch = e.touches[0];
+                if (touch.clientX < 30) { // Свайп с левого края
+                    e.preventDefault();
+                }
+            }
+        }, { passive: false });
 
         
         function showError(message) {
