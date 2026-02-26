@@ -277,75 +277,75 @@ async def handle_arena_button(message: types.Message):
     pass
 
 
-        @router.message(F.web_app_data)
-        async def handle_webapp_data(message: types.Message):
-            """Обрабатывает данные из WebApp"""
-            try:
-                # 🚨 ВАЖНО: логируем ВСЕ входящие данные
-                logger.info("=" * 50)
-                logger.info("🔥 ПОЛУЧЕНЫ WEBAPP DATA!")
-                logger.info(f"User ID: {message.from_user.id}")
-                logger.info(f"Raw data: {message.web_app_data.data}")
+@router.message(F.web_app_data)
+async def handle_webapp_data(message: types.Message):
+    """Обрабатывает данные из WebApp"""
+    try:
+        # 🚨 ВАЖНО: логируем ВСЕ входящие данные
+        logger.info("=" * 50)
+        logger.info("🔥 ПОЛУЧЕНЫ WEBAPP DATA!")
+        logger.info(f"User ID: {message.from_user.id}")
+        logger.info(f"Raw data: {message.web_app_data.data}")
 
-                data = json.loads(message.web_app_data.data)
-                logger.info(f"Parsed data: {data}")
+        data = json.loads(message.web_app_data.data)
+        logger.info(f"Parsed data: {data}")
 
-                action = data.get("action")
-                battle_id = data.get("battle_id")
-                result = data.get("result")
-                rewards = data.get("rewards", {})
+        action = data.get("action")
+        battle_id = data.get("battle_id")
+        result = data.get("result")
+        rewards = data.get("rewards", {})
 
-                logger.info(f"Action: {action}")
-                logger.info(f"Battle ID: {battle_id}")
-                logger.info(f"Result: {result}")
-                logger.info(f"Rewards: {rewards}")
+        logger.info(f"Action: {action}")
+        logger.info(f"Battle ID: {battle_id}")
+        logger.info(f"Result: {result}")
+        logger.info(f"Rewards: {rewards}")
 
-                # Обрабатываем результат битвы
-                if action == "battle_result":
-                    logger.info(f"🎯 Processing battle result: {result}")
+        # Обрабатываем результат битвы
+        if action == "battle_result":
+            logger.info(f"🎯 Processing battle result: {result}")
 
-                    async with AsyncSessionLocal() as session:
-                        user = await get_user_or_create(session, message.from_user.id)
+            async with AsyncSessionLocal() as session:
+                user = await get_user_or_create(session, message.from_user.id)
 
-                        # Начисляем награды
-                        if result == "win":
-                            rating_change = rewards.get("rating", 20)
-                            coins_reward = rewards.get("coins", 50)
-                            dust_reward = rewards.get("dust", 50)
+                # Начисляем награды
+                if result == "win":
+                    rating_change = rewards.get("rating", 20)
+                    coins_reward = rewards.get("coins", 50)
+                    dust_reward = rewards.get("dust", 50)
 
-                            user.arena_wins += 1
-                            user.arena_rating += rating_change
-                            user.coins += coins_reward
-                            user.dust += dust_reward
+                    user.arena_wins += 1
+                    user.arena_rating += rating_change
+                    user.coins += coins_reward
+                    user.dust += dust_reward
 
-                        elif result == "lose":
-                            rating_change = rewards.get("rating", -15)
-                            coins_reward = rewards.get("coins", 25)
-                            dust_reward = rewards.get("dust", 25)
+                elif result == "lose":
+                    rating_change = rewards.get("rating", -15)
+                    coins_reward = rewards.get("coins", 25)
+                    dust_reward = rewards.get("dust", 25)
 
-                            user.arena_losses += 1
-                            user.arena_rating = max(0, user.arena_rating + rating_change)
-                            user.coins += coins_reward
-                            user.dust += dust_reward
+                    user.arena_losses += 1
+                    user.arena_rating = max(0, user.arena_rating + rating_change)
+                    user.coins += coins_reward
+                    user.dust += dust_reward
 
-                        await session.commit()
+                await session.commit()
 
-                        logger.info(f"✅ User updated: wins={user.arena_wins}, rating={user.arena_rating}")
+                logger.info(f"✅ User updated: wins={user.arena_wins}, rating={user.arena_rating}")
 
-                        # Убираем клавиатуру арены
-                        from aiogram.types import ReplyKeyboardRemove
+                # Убираем клавиатуру арены
+                from aiogram.types import ReplyKeyboardRemove
 
-                        await message.answer(
-                            f"{'🎉' if result == 'win' else '😔'} <b>БИТВА ЗАВЕРШЕНА!</b>\n\n"
-                            f"💰 Получено: +{coins_reward}💰 +{dust_reward}✨\n"
-                            f"⭐ Рейтинг: {user.arena_rating}",
-                            reply_markup=ReplyKeyboardRemove()
-                        )
+                await message.answer(
+                    f"{'🎉' if result == 'win' else '😔'} <b>БИТВА ЗАВЕРШЕНА!</b>\n\n"
+                    f"💰 Получено: +{coins_reward}💰 +{dust_reward}✨\n"
+                    f"⭐ Рейтинг: {user.arena_rating}",
+                    reply_markup=ReplyKeyboardRemove()
+                )
 
-                        # Удаляем битву из Redis
-                        if battle_id:
-                            await battle_storage.delete_battle(battle_id)
+                # Удаляем битву из Redis
+                if battle_id:
+                    await battle_storage.delete_battle(battle_id)
 
-            except Exception as e:
-                logger.exception(f"❌ Ошибка обработки WebApp данных: {e}")
-                await message.answer(json.dumps({"type": "error", "message": str(e)}))
+    except Exception as e:
+        logger.exception(f"❌ Ошибка обработки WebApp данных: {e}")
+        await message.answer(json.dumps({"type": "error", "message": str(e)}))
