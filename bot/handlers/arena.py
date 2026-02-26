@@ -221,18 +221,21 @@ async def cmd_arena(message: types.Message, user_id: int = None):
         )
         await battle_storage.save_battle(battle_id, battle_data)
 
-        # ✅ ИСПРАВЛЕНО: Используем InlineKeyboardMarkup с web_app
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="⚔️ НАЧАТЬ БИТВУ",
-                        web_app=WebAppInfo(url=f"{WEBAPP_URL}?battle_id={battle_id}"),
-                    )
-                ],
-                [InlineKeyboardButton(text="« Назад", callback_data="back_to_main")],
-            ]
+        from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+
+        # Создаем кнопку с WebApp
+        webapp_button = KeyboardButton(
+            text="⚔️ ОТКРЫТЬ АРЕНУ",
+            web_app=WebAppInfo(url=f"{WEBAPP_URL}?battle_id={battle_id}")
         )
+
+        # Создаем клавиатуру с этой кнопкой
+        reply_keyboard = ReplyKeyboardMarkup(
+            keyboard=[[webapp_button]],
+            resize_keyboard=True,
+            one_time_keyboard=True
+        )
+
 
         # Информация о битве
         text = f"""
@@ -244,25 +247,34 @@ async def cmd_arena(message: types.Message, user_id: int = None):
 👹 <b>Противник:</b> {'Реальный игрок' if opponent_id else 'Тестовая колода'}
 
 ⚡ <b>Нажмите кнопку ниже чтобы начать битву!</b>
+
+<i>⚠️ После завершения боя нажмите "ЗАКРЫТЬ" в арене для получения наград</i>
 """
 
-        await message.answer(text, reply_markup=keyboard)
+        await message.answer(text, reply_markup=reply_keyboard)
 
     except Exception as e:
         logger.exception(f"Ошибка cmd_arena: {e}")
         await message.answer("❌ Произошла ошибка. Попробуйте позже.")
 
 
-@router.callback_query(F.data == "open_arena")
-async def open_arena(callback: types.CallbackQuery):
-    """Обработчик кнопки открытия арены"""
-    try:
-        # Передаем правильный параметр
-        await cmd_arena(callback.message, callback.from_user.id)
-        await callback.answer()
-    except Exception as e:
-        logger.exception(f"Ошибка в open_arena: {e}")
-        await callback.answer("❌ Ошибка открытия арены", show_alert=True)
+# @router.callback_query(F.data == "open_arena")
+# async def open_arena(callback: types.CallbackQuery):
+#     """Обработчик кнопки открытия арены"""
+#     try:
+#         # Передаем правильный параметр
+#         await cmd_arena(callback.message, callback.from_user.id)
+#         await callback.answer()
+#     except Exception as e:
+#         logger.exception(f"Ошибка в open_arena: {e}")
+#         await callback.answer("❌ Ошибка открытия арены", show_alert=True)
+
+
+@router.message(F.text == "⚔️ ОТКРЫТЬ АРЕНУ")
+async def handle_arena_button(message: types.Message):
+    """Обработчик нажатия на кнопку арены (если нужно)"""
+    # Эта функция может быть пустой, так как WebApp откроется автоматически
+    pass
 
 
 @router.message(F.web_app_data)
@@ -368,7 +380,9 @@ async def handle_webapp_data(message: types.Message):
                 await session.refresh(user)
                 logger.info(f"✅ User updated: wins={user.arena_wins}, rating={user.arena_rating}, coins={user.coins}")
 
-                # Отправляем подтверждение
+                # ✅ Отправляем подтверждение и убираем клавиатуру арены
+                from aiogram.types import ReplyKeyboardRemove
+                
                 await message.answer(
                     f"{'🎉' if result == 'win' else '😔'} <b>БИТВА ЗАВЕРШЕНА!</b>\n\n"
                     f"📊 Статистика:\n"
@@ -376,7 +390,8 @@ async def handle_webapp_data(message: types.Message):
                     f"├ Поражений: {old_stats['losses']} → {user.arena_losses}\n"
                     f"├ Рейтинг: {old_stats['rating']} → {user.arena_rating}\n"
                     f"├ Монеты: {old_stats['coins']} → {user.coins}\n"
-                    f"└ Пыль: {old_stats['dust']} → {user.dust}"
+                    f"└ Пыль: {old_stats['dust']} → {user.dust}",
+                    reply_markup=ReplyKeyboardRemove()  # Убираем клавиатуру
                 )
 
                 # Удаляем битву из Redis
