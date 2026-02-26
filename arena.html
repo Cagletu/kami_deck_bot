@@ -285,7 +285,6 @@
                 tg = window.Telegram.WebApp;
                 tg.expand();
                 tg.ready();
-                tg.enableClosingConfirmation();
 
                 console.log('Telegram WebApp инициализирован');
 
@@ -435,8 +434,10 @@
                     </div>
                     <div class="card-name">${card.name}</div>
                     <div class="card-stats">
-                        <span>💪 ${card.power}</span>
-                        <span>❤️ ${card.health}/${card.max_health}</span>
+                    <span>💪 ${card.power}</span>
+                    <span>❤️ ${card.health}/${card.max_health}</span>
+                    <span>⚔️ ${card.attack}</span>
+                    <span>🛡️ ${card.defense}</span>
                     </div>
                     <div class="health-bar enemy-health-bar">
                         <div class="health-bar-fill enemy-health-bar-fill" style="width: ${healthPercent}%"></div>
@@ -549,7 +550,7 @@
                                 addLog(`💰 Награды: ${data.rewards.coins} монет, ${data.rewards.dust} пыли, ${data.rewards.rating} рейтинга`);
                             }
                             // ПРОВЕРЯЕМ ЧТО tg СУЩЕСТВУЕТ
-                            if (tg && tg.sendData) {
+                            if (tg) {
                                 try {
                                     const resultData = JSON.stringify({ 
                                         action: 'battle_result',
@@ -579,7 +580,7 @@
                             if (data.rewards) {
                                 addLog(`💰 Награды: ${data.rewards.coins} монет, ${data.rewards.dust} пыли, ${data.rewards.rating} рейтинга`);
                             }
-                            if (tg && tg.sendData) {
+                            if (tg) {
                                 try {
                                     const resultData = JSON.stringify({ 
                                         action: 'battle_result',
@@ -726,7 +727,7 @@
                                 if (data.rewards) {
                                     addLog(`💰 Награды: ${data.rewards.coins} монет, ${data.rewards.dust} пыли, ${data.rewards.rating} рейтинга`);
                                 }
-                                if (tg && tg.sendData) {
+                                if (tg) {
                                     try {
                                         const resultData = JSON.stringify({ 
                                             action: 'battle_result',
@@ -752,7 +753,7 @@
                                     if (tg) tg.close();
                                 }, 500);
                             } else if (data.winner === 'enemy') {
-                                if (tg && tg.sendData) {
+                                if (tg) {
                                     try {
                                         const resultData = JSON.stringify({ 
                                             action: 'battle_result',
