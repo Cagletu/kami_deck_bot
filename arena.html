@@ -506,6 +506,8 @@
             // Здесь можно добавить логику для ручного выбора цели
         }
         
+        // В arena.html, обновите функции nextTurn и autoBattle
+
         async function nextTurn() {
             const btn = document.getElementById('nextTurnBtn');
             btn.disabled = true;
@@ -546,82 +548,11 @@
                         data.log.forEach(log => addLog(log));
                     }
 
+                    renderBattle();
+
                     // ЕСЛИ БОЙ ЗАКОНЧЕН
                     if (data.winner) {
-                        if (data.winner === 'player') {
-                            addLog('🎉 ПОБЕДА!');
-                            if (data.rewards) {
-                                addLog(`💰 Награды: +${data.rewards.coins}💰 +${data.rewards.dust}✨ +${data.rewards.rating}⭐`);
-                            }
-
-                            // 👇 ОТПРАВЛЯЕМ РЕЗУЛЬТАТ ЧЕРЕЗ API С initData
-                            try {
-                                // Получаем initData из URL (мы передали её при открытии)
-                                const urlParams = new URLSearchParams(window.location.search);
-                                const initData = urlParams.get('init_data');
-
-                                const response = await fetch('/api/battle/result', {
-                                    method: 'POST',
-                                    headers: {
-                                        'Content-Type': 'application/json',
-                                        'X-Init-Data': initData || '' // 👈 Передаем initData в заголовке
-                                    },
-                                    body: JSON.stringify({
-                                        action: 'battle_result',
-                                        battle_id: battleId,
-                                        result: 'win',
-                                        rewards: rewards
-                                    })
-                                });
-                            }
-
-                            const data = await response.json();
-                            console.log('Battle result sent:', data);
-
-                            } catch (error) {
-                            console.error('Failed to send battle result:', error);
-                            }
-
-                        } else if (data.winner === 'enemy') {
-                            addLog('😔 Поражение...');
-                            if (data.rewards) {
-                                addLog(`💰 Награды: +${data.rewards.coins}💰 +${data.rewards.dust}✨ ${data.rewards.rating}⭐`);
-                            }
-
-                            try {
-                                const urlParams = new URLSearchParams(window.location.search);
-                                const initData = urlParams.get('init_data');
-        
-                                const response = await fetch('/api/battle/result', {
-                                    method: 'POST',
-                                    headers: {
-                                        'Content-Type': 'application/json',
-                                        'X-Init-Data': initData || ''
-                                    },
-                                    body: JSON.stringify({
-                                        action: 'battle_result',
-                                        battle_id: battleId,
-                                        result: 'lose',
-                                        rewards: rewards
-                                    })
-                                });
-                            }
-                    
-                            } catch (error) {
-                                console.error('Failed to send battle result:', error);
-                            }
-                        }
-
-                        // Закрываем через 2 секунды
-                        setTimeout(() => {
-                        if (tg) tg.close();
-                        }, 2000);
-                        }
-
-                        btn.disabled = true;
-                        btn.textContent = '⚡ БОЙ ОКОНЧЕН';
-                    } else {
-                        renderBattle();
+                        await endBattle(data.winner, data.rewards);
                     }
                 } else {
                     addLog('❌ ' + (data.error || 'Ошибка сервера'));
@@ -690,74 +621,7 @@
                         renderBattle();
 
                         if (data.winner) {
-                            if (data.winner === 'player') {
-                                addLog('🎉 ПОБЕДА!');
-                                if (data.rewards) {
-                                    addLog(`💰 Награды: +${data.rewards.coins}💰 +${data.rewards.dust}✨ +${data.rewards.rating}⭐`);
-                                }
-
-                                // 👇 ОТПРАВЛЯЕМ РЕЗУЛЬТАТ ЧЕРЕЗ API С initData
-                                try {
-                                    // Получаем initData из URL (мы передали её при открытии)
-                                    const urlParams = new URLSearchParams(window.location.search);
-                                    const initData = urlParams.get('init_data');
-
-                                    const response = await fetch('/api/battle/result', {
-                                        method: 'POST',
-                                        headers: {
-                                            'Content-Type': 'application/json',
-                                            'X-Init-Data': initData || '' // 👈 Передаем initData в заголовке
-                                        },
-                                        body: JSON.stringify({
-                                            action: 'battle_result',
-                                            battle_id: battleId,
-                                            result: 'win',
-                                            rewards: rewards
-                                        })
-                                    });
-
-                                    const data = await response.json();
-                                    console.log('Battle result sent:', data);
-
-                                } catch (error) {
-                                    console.error('Failed to send battle result:', error);
-                                }
-
-                            } else if (data.winner === 'enemy') {
-                                addLog('😔 Поражение...');
-                                if (data.rewards) {
-                                    addLog(`💰 Награды: +${data.rewards.coins}💰 +${data.rewards.dust}✨ ${data.rewards.rating}⭐`);
-                                }
-
-                                try {
-                                    const urlParams = new URLSearchParams(window.location.search);
-                                    const initData = urlParams.get('init_data');
-    
-                                    const response = await fetch('/api/battle/result', {
-                                        method: 'POST',
-                                        headers: {
-                                            'Content-Type': 'application/json',
-                                            'X-Init-Data': initData || ''
-                                        },
-                                        body: JSON.stringify({
-                                            action: 'battle_result',
-                                            battle_id: battleId,
-                                            result: 'lose',
-                                            rewards: rewards
-                                        })
-                                    });
-    
-                                } catch (error) {
-                                    console.error('Failed to send battle result:', error);
-                                }
-                            }
-    
-                            // Закрываем через 2 секунды
-                            setTimeout(() => {
-                            if (tg) tg.close();
-                            }, 2000);
-                            }
-
+                            await endBattle(data.winner, data.rewards);
                             break;
                         }
                     }
@@ -779,6 +643,76 @@
             } else {
                 window.location.href = 'https://t.me/KamiDeckBot';
             }
+        }
+
+
+        async function endBattle(winner, rewards) {
+            if (winner === 'player') {
+                addLog('🎉 ПОБЕДА!');
+                if (rewards) {
+                    addLog(`💰 Награды: +${rewards.coins}💰 +${rewards.dust}✨ +${rewards.rating}⭐`);
+                }
+
+                // 👇 ОТПРАВЛЯЕМ РЕЗУЛЬТАТ ЧЕРЕЗ API С initData
+                try {
+                    // Получаем initData из URL (мы передали её при открытии)
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const initData = urlParams.get('init_data');
+
+                    const response = await fetch('/api/battle/result', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Init-Data': initData || '' // 👈 Передаем initData в заголовке
+                        },
+                        body: JSON.stringify({
+                            action: 'battle_result',
+                            battle_id: battleId,
+                            result: 'win',
+                            rewards: rewards
+                        })
+                    });
+
+                    const data = await response.json();
+                    console.log('Battle result sent:', data);
+
+                } catch (error) {
+                    console.error('Failed to send battle result:', error);
+                }
+
+            } else if (winner === 'enemy') {
+                addLog('😔 Поражение...');
+                if (rewards) {
+                    addLog(`💰 Награды: +${rewards.coins}💰 +${rewards.dust}✨ ${rewards.rating}⭐`);
+                }
+
+                try {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const initData = urlParams.get('init_data');
+
+                    const response = await fetch('/api/battle/result', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Init-Data': initData || ''
+                        },
+                        body: JSON.stringify({
+                            action: 'battle_result',
+                            battle_id: battleId,
+                            result: 'lose',
+                            rewards: rewards
+                        })
+                    });
+
+                } catch (error) {
+                    console.error('Failed to send battle result:', error);
+                }
+            }
+
+            // Закрываем через 2 секунды
+            setTimeout(() => {
+                if (tg) tg.close();
+            }, 2000);
         }
 
 
