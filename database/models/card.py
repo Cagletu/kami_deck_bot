@@ -1,3 +1,4 @@
+#database/models/card.py
 from sqlalchemy import Column, Integer, String, Text, JSON, DateTime
 from sqlalchemy.sql import func, text
 from database.base import Base

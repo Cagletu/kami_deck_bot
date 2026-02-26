@@ -1,3 +1,4 @@
+#database/models/arena_battle.py
 from sqlalchemy import Column, Integer, ForeignKey, DateTime, String, BigInteger
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship

@@ -1,3 +1,4 @@
+# game/upgrade_calculator.py
 from database.models.card import Card
 from game.constants import (
     POWER_GROWTH,

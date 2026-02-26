@@ -1,6 +1,7 @@
+# game/pack_system.py
 PACK_SETTINGS = {
     "common": {
-        "price": 1,
+        "price": 100,
         "cards_count": 3,
         "rarity_weights": {
             "E": 40,

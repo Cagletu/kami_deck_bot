@@ -1,3 +1,5 @@
+# game/expedition_system.py
+
 import random
 from datetime import datetime, timedelta
 import math

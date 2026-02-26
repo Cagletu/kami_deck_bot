@@ -17,7 +17,7 @@ from game.expedition_system import ExpeditionManager
 from sqlalchemy import func, and_
 
 from sqlalchemy import select
-from aiogram.types import WebAppInfo
+from game.arena_ranks import get_rank_display, get_next_rank_progress
 
 from database.crud import (
     get_user_or_create,
@@ -31,7 +31,6 @@ from bot.keyboards import (
     collection_menu_keyboard,
     rarity_keyboard,
     collection_keyboard,
-    card_detail_keyboard,
 )
 
 # URL для WebApp (ваш Railway домен)
@@ -61,6 +60,11 @@ async def cmd_start(message: types.Message, state: FSMContext):
             session, user.id
         )
 
+        rank_display = get_rank_display(user.arena_rating)
+        needed, total, progress = get_next_rank_progress(user.arena_rating)
+
+        progress_bar = "█" * int(progress // 10) + "░" * (10 - int(progress // 10))
+
         welcome_text = f"""
 🎮 <b>Добро пожаловать в Kami Deck</b>, {message.from_user.first_name}!
 
@@ -71,7 +75,10 @@ async def cmd_start(message: types.Message, state: FSMContext):
 🃏 Карточек: <code>{user.cards_opened or 0}</code>
 
 <b>🏆 Статистика:</b>
-⚔️ Рейтинг: <code>{user.arena_rating}</code>
+⚔️ Арена: <code>{rank_display}</code>
+⭐ <code>{user.arena_rating}</code> рейтинга
+[<code>{progress_bar}</code>] <code>{int(progress)}</code>%
+<code>{needed}</code> очков до повышения
 📈 Побед/Поражений: <code>{user.arena_wins}/{user.arena_losses}</code>
 🏕️ Несобранных наград экспедиций: <code>{len(uncollected)}</code>
 
@@ -107,6 +114,11 @@ async def cmd_profile(message: types.Message):
         days = time_in_game.days
         hours = time_in_game.seconds // 3600
 
+        rank_display = get_rank_display(user.arena_rating)
+        needed, total, progress = get_next_rank_progress(user.arena_rating)
+
+        progress_bar = "█" * int(progress // 10) + "░" * (10 - int(progress // 10))
+
         stats = await get_collection_stats(user.id)
 
         profile_text = f"""
@@ -132,7 +144,10 @@ ID: <code>{user.id}</code>
 Побед: <code>{user.arena_wins}</code>
 Поражений: <code>{user.arena_losses}</code>
 Винрейт: <code>{win_rate:.1f}%</code>
-Рейтинг: <code>{user.arena_rating}</code>
+<code>{rank_display}</code>
+⭐ <code>{user.arena_rating}</code> рейтинга
+[<code>{progress_bar}</code>] <code>{int(progress)}</code>%
+<code>{needed}</code> очков до повышения
 
 <b>⏰ Время в игре:</b>
 В игре: {days} дней, {hours} часов

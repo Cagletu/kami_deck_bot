@@ -1,3 +1,4 @@
+#bot/handlers/arena.py
 from aiogram import Router, F, types
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
@@ -285,7 +286,7 @@ async def cmd_arena(message: types.Message, user_id: int = None):
 
         <b>📊 ТВОЙ РАНГ:</b> {rank_display}
         ⭐ {user.arena_rating} рейтинга
-        [{progress_bar}] {int(progress)}% до следующего ранга
+        [{progress_bar}] {int(progress)}%
         {needed} очков до повышения
 
         <b>👹 ПРОТИВНИК:</b> {opponent_type}
@@ -342,7 +343,7 @@ async def show_arena_top(callback: types.CallbackQuery):
                     deck_result = await session.execute(
                         select(Card.card_name, Card.rarity)
                         .join(UserCard, UserCard.card_id == Card.id)
-                        .where(UserCard.id.in_(player.selected_deck[:3]))  # Топ-3 карты
+                        .where(UserCard.id.in_(player.selected_deck[:5]))  # Топ-5 карты
                     )
                     top_cards = deck_result.all()
                     if top_cards:

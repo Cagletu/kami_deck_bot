@@ -1,3 +1,4 @@
+#database/models/pack_opening.py
 from sqlalchemy import Column, Integer, ForeignKey, DateTime, JSON, String
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship

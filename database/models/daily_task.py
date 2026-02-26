@@ -1,3 +1,4 @@
+#database/models/daily_task.py
 from sqlalchemy import (
     Column,
     Integer,

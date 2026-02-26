@@ -1,3 +1,4 @@
+#database/models/user.py
 from sqlalchemy import Column, Integer, String, BigInteger, DateTime, JSON
 from sqlalchemy.sql import func
 from database.base import Base

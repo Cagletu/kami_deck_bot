@@ -1,3 +1,4 @@
+#database/models/trade.py
 from sqlalchemy import (
     Column,
     Integer,
