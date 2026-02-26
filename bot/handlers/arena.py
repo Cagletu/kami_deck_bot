@@ -277,271 +277,75 @@ async def handle_arena_button(message: types.Message):
     pass
 
 
-@router.message(F.web_app_data)
-async def handle_webapp_data(message: types.Message):
-    """Обрабатывает данные из WebApp"""
-    try:
-        # 🚨 ВАЖНО: логируем ВСЕ входящие данные
-        logger.info("=" * 50)
-        logger.info("🔥 ПОЛУЧЕНЫ WEBAPP DATA!")
-        logger.info(f"User ID: {message.from_user.id}")
-        logger.info(f"Raw data: {message.web_app_data.data}")
+        @router.message(F.web_app_data)
+        async def handle_webapp_data(message: types.Message):
+            """Обрабатывает данные из WebApp"""
+            try:
+                # 🚨 ВАЖНО: логируем ВСЕ входящие данные
+                logger.info("=" * 50)
+                logger.info("🔥 ПОЛУЧЕНЫ WEBAPP DATA!")
+                logger.info(f"User ID: {message.from_user.id}")
+                logger.info(f"Raw data: {message.web_app_data.data}")
 
-        data = json.loads(message.web_app_data.data)
-        logger.info(f"Parsed data: {data}")
+                data = json.loads(message.web_app_data.data)
+                logger.info(f"Parsed data: {data}")
 
-        action = data.get("action")
-        battle_id = data.get("battle_id")
-        result = data.get("result")
-        rewards = data.get("rewards", {})
+                action = data.get("action")
+                battle_id = data.get("battle_id")
+                result = data.get("result")
+                rewards = data.get("rewards", {})
 
-        logger.info(f"Action: {action}")
-        logger.info(f"Battle ID: {battle_id}")
-        logger.info(f"Result: {result}")
-        logger.info(f"Rewards: {rewards}")
+                logger.info(f"Action: {action}")
+                logger.info(f"Battle ID: {battle_id}")
+                logger.info(f"Result: {result}")
+                logger.info(f"Rewards: {rewards}")
 
-        # ===== ТЕСТОВЫЙ ЭНДПОИНТ =====
-        if action == "test":
-            logger.info("✅ Test data received!")
-            await message.answer("✅ Тестовые данные получены!")
-            return
+                # Обрабатываем результат битвы
+                if action == "battle_result":
+                    logger.info(f"🎯 Processing battle result: {result}")
 
-        # ===== ОБРАБОТКА РЕЗУЛЬТАТА БИТВЫ =====
-        if action == "battle_result":
-            logger.info(f"🎯 Processing battle result: {result}")
+                    async with AsyncSessionLocal() as session:
+                        user = await get_user_or_create(session, message.from_user.id)
 
-            async with AsyncSessionLocal() as session:
-                user = await get_user_or_create(session, message.from_user.id)
-                logger.info(f"👤 User found: ID={user.id}, coins={user.coins}, dust={user.dust}, rating={user.arena_rating}")
+                        # Начисляем награды
+                        if result == "win":
+                            rating_change = rewards.get("rating", 20)
+                            coins_reward = rewards.get("coins", 50)
+                            dust_reward = rewards.get("dust", 50)
 
-                # Сохраняем старые значения для отчета
-                old_stats = {
-                    "wins": user.arena_wins,
-                    "losses": user.arena_losses,
-                    "rating": user.arena_rating,
-                    "coins": user.coins,
-                    "dust": user.dust,
-                }
+                            user.arena_wins += 1
+                            user.arena_rating += rating_change
+                            user.coins += coins_reward
+                            user.dust += dust_reward
 
-                # Получаем данные битвы из Redis
-                battle_data = None
-                if battle_id:
-                    battle_data = await battle_storage.get_battle(battle_id)
-                    if battle_data:
-                        logger.info("✅ Battle data found in Redis")
-                    else:
-                        logger.warning(f"❌ Battle data NOT found in Redis for {battle_id}")
+                        elif result == "lose":
+                            rating_change = rewards.get("rating", -15)
+                            coins_reward = rewards.get("coins", 25)
+                            dust_reward = rewards.get("dust", 25)
 
-                # Начисляем награды
-                if result == "win":
-                    rating_change = rewards.get("rating", 20)
-                    coins_reward = rewards.get("coins", 50)
-                    dust_reward = rewards.get("dust", 50)
+                            user.arena_losses += 1
+                            user.arena_rating = max(0, user.arena_rating + rating_change)
+                            user.coins += coins_reward
+                            user.dust += dust_reward
 
-                    user.arena_wins += 1
-                    user.arena_rating += rating_change
-                    user.coins += coins_reward
-                    user.dust += dust_reward
+                        await session.commit()
 
-                    logger.info(f"✅ WIN: +{rating_change} rating, +{coins_reward} coins, +{dust_reward} dust")
+                        logger.info(f"✅ User updated: wins={user.arena_wins}, rating={user.arena_rating}")
 
-                elif result == "lose":
-                    rating_change = rewards.get("rating", -15)
-                    coins_reward = rewards.get("coins", 25)
-                    dust_reward = rewards.get("dust", 25)
+                        # Убираем клавиатуру арены
+                        from aiogram.types import ReplyKeyboardRemove
 
-                    user.arena_losses += 1
-                    user.arena_rating = max(0, user.arena_rating + rating_change)
-                    user.coins += coins_reward
-                    user.dust += dust_reward
+                        await message.answer(
+                            f"{'🎉' if result == 'win' else '😔'} <b>БИТВА ЗАВЕРШЕНА!</b>\n\n"
+                            f"💰 Получено: +{coins_reward}💰 +{dust_reward}✨\n"
+                            f"⭐ Рейтинг: {user.arena_rating}",
+                            reply_markup=ReplyKeyboardRemove()
+                        )
 
-                    logger.info(f"✅ LOSE: {rating_change} rating, +{coins_reward} coins, +{dust_reward} dust")
+                        # Удаляем битву из Redis
+                        if battle_id:
+                            await battle_storage.delete_battle(battle_id)
 
-                # Сохраняем битву в БД
-                db_battle = DBArenaBattle(
-                    attacker_id=user.id,
-                    defender_id=battle_data.get("opponent_id") if battle_data else -1,
-                    attacker_deck=[c.get("user_card_id") for c in (battle_data.get("player_cards") if battle_data else []) if c.get("user_card_id", 0) > 0],
-                    defender_deck=[c.get("user_card_id") for c in (battle_data.get("enemy_cards") if battle_data else []) if c.get("user_card_id", 0) > 0],
-                    rounds=battle_data.get("turn", 0) if battle_data else 0,
-                    winner_id=user.id if result == "win" else None,
-                    result="attacker_win" if result == "win" else "defender_win",
-                    attacker_rating_change=rating_change if result == "win" else rating_change,
-                    attacker_reward_coins=coins_reward,
-                    attacker_reward_dust=dust_reward,
-                    ended_at=datetime.now()
-                )
-                session.add(db_battle)
-
-                # Сохраняем изменения в БД
-                await session.commit()
-                logger.info("✅ Battle saved to database")
-
-                await session.refresh(user)
-                logger.info(f"✅ User updated: wins={user.arena_wins}, rating={user.arena_rating}, coins={user.coins}")
-
-                # ✅ Отправляем подтверждение и убираем клавиатуру арены
-                from aiogram.types import ReplyKeyboardRemove
-                
-                await message.answer(
-                    f"{'🎉' if result == 'win' else '😔'} <b>БИТВА ЗАВЕРШЕНА!</b>\n\n"
-                    f"📊 Статистика:\n"
-                    f"├ Побед: {old_stats['wins']} → {user.arena_wins}\n"
-                    f"├ Поражений: {old_stats['losses']} → {user.arena_losses}\n"
-                    f"├ Рейтинг: {old_stats['rating']} → {user.arena_rating}\n"
-                    f"├ Монеты: {old_stats['coins']} → {user.coins}\n"
-                    f"└ Пыль: {old_stats['dust']} → {user.dust}",
-                    reply_markup=ReplyKeyboardRemove()  # Убираем клавиатуру
-                )
-
-                # Удаляем битву из Redis
-                if battle_id:
-                    await battle_storage.delete_battle(battle_id)
-                    logger.info(f"✅ Battle {battle_id} deleted from Redis")
-
-            return
-
-        elif action == "close_arena":
-            logger.info(f"👋 User {message.from_user.id} closed arena")
-            return
-
-        else:
-            logger.warning(f"⚠️ Unknown action: {action}")
-
-    except Exception as e:
-        logger.exception(f"❌ Ошибка обработки WebApp данных: {e}")
-        await message.answer(json.dumps({"type": "error", "message": str(e)}))
-
-
-@router.message()
-async def handle_all_messages(message: types.Message):
-    """ВРЕМЕННО: Ловим ВСЕ сообщения для отладки"""
-    logger.info(f"📨 Получено сообщение: {message.text}")
-    logger.info(f"   from: {message.from_user.id}")
-
-    # Проверяем, не является ли это JSON от WebApp
-    if message.text and message.text.startswith('{'):
-        try:
-            data = json.loads(message.text)
-            logger.info(f"🔥 Найден JSON в обычном сообщении: {data}")
-
-            # Обрабатываем как данные из WebApp
-            await process_webapp_data(message, data)
-            return
-        except:
-            pass
-
-    # Если это наша кнопка с WebApp
-    if message.text == "⚔️ ОТКРЫТЬ АРЕНУ":
-        # Уже обрабатывается другим хендлером
-        pass
-
-async def process_webapp_data(message: types.Message, data: dict):
-    """Обработка данных из WebApp (универсальная)"""
-    action = data.get("action")
-    battle_id = data.get("battle_id")
-    result = data.get("result")
-    rewards = data.get("rewards", {})
-
-    logger.info(f"🎯 Processing: action={action}, result={result}")
-
-    # ===== ТЕСТОВЫЙ ЭНДПОИНТ =====
-    if action == "test":
-        await message.answer("✅ Тестовые данные получены!")
-        return
-
-    # ===== ОБРАБОТКА РЕЗУЛЬТАТА БИТВЫ =====
-    if action == "battle_result":
-        async with AsyncSessionLocal() as session:
-            user = await get_user_or_create(session, message.from_user.id)
-
-            # Сохраняем старые значения
-            old_stats = {
-                "wins": user.arena_wins,
-                "losses": user.arena_losses,
-                "rating": user.arena_rating,
-                "coins": user.coins,
-                "dust": user.dust,
-            }
-
-            # Получаем данные битвы из Redis
-            battle_data = None
-            if battle_id:
-                battle_data = await battle_storage.get_battle(battle_id)
-
-            # Начисляем награды
-            if result == "win":
-                rating_change = rewards.get("rating", 20)
-                coins_reward = rewards.get("coins", 50)
-                dust_reward = rewards.get("dust", 50)
-
-                user.arena_wins += 1
-                user.arena_rating += rating_change
-                user.coins += coins_reward
-                user.dust += dust_reward
-
-            elif result == "lose":
-                rating_change = rewards.get("rating", -15)
-                coins_reward = rewards.get("coins", 25)
-                dust_reward = rewards.get("dust", 25)
-
-                user.arena_losses += 1
-                user.arena_rating = max(0, user.arena_rating + rating_change)
-                user.coins += coins_reward
-                user.dust += dust_reward
-
-            # Сохраняем битву в БД
-            db_battle = DBArenaBattle(
-                attacker_id=user.id,
-                defender_id=battle_data.get("opponent_id") if battle_data else -1,
-                rounds=battle_data.get("turn", 0) if battle_data else 0,
-                winner_id=user.id if result == "win" else None,
-                result="attacker_win" if result == "win" else "defender_win",
-                attacker_rating_change=rating_change,
-                attacker_reward_coins=coins_reward,
-                attacker_reward_dust=dust_reward,
-                ended_at=datetime.now()
-            )
-            session.add(db_battle)
-
-            await session.commit()
-
-            from aiogram.types import ReplyKeyboardRemove
-
-            await message.answer(
-                f"{'🎉' if result == 'win' else '😔'} <b>БИТВА ЗАВЕРШЕНА!</b>\n\n"
-                f"📊 Статистика:\n"
-                f"├ Побед: {old_stats['wins']} → {user.arena_wins}\n"
-                f"├ Поражений: {old_stats['losses']} → {user.arena_losses}\n"
-                f"├ Рейтинг: {old_stats['rating']} → {user.arena_rating}\n"
-                f"├ Монеты: {old_stats['coins']} → {user.coins}\n"
-                f"└ Пыль: {old_stats['dust']} → {user.dust}",
-                reply_markup=ReplyKeyboardRemove()
-            )
-
-            # Удаляем битву из Redis
-            if battle_id:
-                await battle_storage.delete_battle(battle_id)
-
-    elif action == "close_arena":
-        logger.info("👋 User closed arena")
-
-
-@router.message()
-async def debug_all_messages(message: types.Message):
-    """ОТЛАДКА: ловим все сообщения"""
-    logger.info(f"🔍 DEBUG - Получено сообщение: '{message.text}'")
-    logger.info(f"   from: {message.from_user.id}")
-
-    # Проверяем, не JSON ли это
-    if message.text and message.text.strip().startswith('{'):
-        try:
-            data = json.loads(message.text)
-            logger.info(f"🎯 DEBUG - Найден JSON: {data}")
-            await process_webapp_data(message, data)
-            return
-        except json.JSONDecodeError as e:
-            logger.error(f"JSON parse error: {e}")
-
-    # Не отвечаем, чтобы не блокировать другие хендлеры
-
+            except Exception as e:
+                logger.exception(f"❌ Ошибка обработки WebApp данных: {e}")
+                await message.answer(json.dumps({"type": "error", "message": str(e)}))

@@ -287,6 +287,7 @@
                 tg.ready();
 
                 console.log('Telegram WebApp инициализирован');
+                console.log('Init data:', tg.initData); // 👈 ПОЛУЧАЕМ INIT DATA
 
                 // Добавляем обработчик закрытия
                 window.addEventListener('beforeunload', function() {
@@ -475,8 +476,6 @@
             btn.disabled = true;
             btn.textContent = '⚡ БОЙ ИДЕТ...';
 
-            let data = null;
-
             try {
                 const response = await fetch('/api/battle/turn', {
                     method: 'POST',
@@ -488,22 +487,9 @@
                     })
                 });
 
-                data = await response.json();
+                const data = await response.json();
 
                 if (data.success) {
-                    // Анимируем каждый удар
-                    if (data.log && data.log.length > 0) {
-                        // Получаем действия из лога (нужно добавить в API)
-                        for (const action of data.actions || []) {
-                            await animateAttack(
-                                action.attacker_id,
-                                action.defender_id,
-                                action.damage,
-                                action.is_critical
-                            );
-                        }
-                    }
-
                     // Обновляем состояние карт
                     data.player_cards.forEach(card => {
                         if (playerCards[card.id]) {
@@ -522,117 +508,88 @@
 
                     // Добавляем логи
                     if (data.log && data.log.length > 0) {
-                        data.log.forEach(log => {
-                            // Добавляем эмодзи для различения сторон
-                            let formattedLog = log;
-                            if (log.includes('атакует')) {
-                                // Пытаемся определить кто атаковал
-                                const isPlayerAttacker = data.actions?.find(a => 
-                                    a.attacker_name === log.split(' ')[1]
-                                )?.attacker_id > 0;
-
-                                if (isPlayerAttacker) {
-                                    formattedLog = '⚔️ [ТЫ] ' + log;
-                                } else {
-                                    formattedLog = '👹 [ВРАГ] ' + log;
-                                }
-                            }
-                            addLog(formattedLog);
-                        });
+                        data.log.forEach(log => addLog(log));
                     }
 
-                    // 🔥 ЕСЛИ БОЙ ЗАКОНЧЕН
+                    // ЕСЛИ БОЙ ЗАКОНЧЕН
                     if (data.winner) {
                         if (data.winner === 'player') {
                             addLog('🎉 ПОБЕДА!');
-                            // Добавляем награды
                             if (data.rewards) {
-                                addLog(`💰 Награды: ${data.rewards.coins} монет, ${data.rewards.dust} пыли, ${data.rewards.rating} рейтинга`);
+                                addLog(`💰 Награды: +${data.rewards.coins}💰 +${data.rewards.dust}✨ +${data.rewards.rating}⭐`);
                             }
-                            // ПРОВЕРЯЕМ ЧТО tg СУЩЕСТВУЕТ
+
+                            // 👇 ИСПОЛЬЗУЕМ initData ДЛЯ ОТПРАВКИ
                             if (tg) {
-                                try {
-                                    const resultData = JSON.stringify({ 
+                                // Отправляем через HTTP API (бэкенд)
+                                await fetch('/api/battle/result', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'X-Init-Data': tg.initData // 👈 ПЕРЕДАЕМ INIT DATA В ЗАГОЛОВКЕ
+                                    },
+                                    body: JSON.stringify({
                                         action: 'battle_result',
                                         battle_id: battleId,
                                         result: 'win',
-                                        rewards: data.rewards 
-                                    });
-                                    console.log('📤 Sending data:', resultData);
-                                    tg.sendData(resultData);
-
-                                    // Отправляем также через HTTP запрос
-                                    fetch('/api/battle/result', {
-                                        method: 'POST',
-                                        headers: {'Content-Type': 'application/json'},
-                                        body: resultData
-                                    }).catch(e => console.error('HTTP backup failed:', e));
-
-                                } catch (e) {
-                                    console.error('Send error:', e);
-                                }
+                                        rewards: data.rewards
+                                    })
+                                });
                             }
+
                             setTimeout(() => {
                                 if (tg) tg.close();
-                            }, 500);
+                            }, 2000);
+
                         } else if (data.winner === 'enemy') {
                             addLog('😔 Поражение...');
                             if (data.rewards) {
-                                addLog(`💰 Награды: ${data.rewards.coins} монет, ${data.rewards.dust} пыли, ${data.rewards.rating} рейтинга`);
+                                addLog(`💰 Награды: +${data.rewards.coins}💰 +${data.rewards.dust}✨ ${data.rewards.rating}⭐`);
                             }
+
                             if (tg) {
-                                try {
-                                    const resultData = JSON.stringify({ 
+                                await fetch('/api/battle/result', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'X-Init-Data': tg.initData
+                                    },
+                                    body: JSON.stringify({
                                         action: 'battle_result',
                                         battle_id: battleId,
                                         result: 'lose',
-                                        rewards: data.rewards 
-                                    });
-                                    console.log('📤 Sending data:', resultData);
-                                    tg.sendData(resultData);
-
-                                    // Отправляем также через HTTP запрос
-                                    fetch('/api/battle/result', {
-                                        method: 'POST',
-                                        headers: {'Content-Type': 'application/json'},
-                                        body: resultData
-                                    }).catch(e => console.error('HTTP backup failed:', e));
-
-                                } catch (e) {
-                                    console.error('Send error:', e);
-                                }
+                                        rewards: data.rewards
+                                    })
+                                });
                             }
+
                             setTimeout(() => {
                                 if (tg) tg.close();
-                            }, 500);
+                            }, 2000);
                         }
-        
-                        // Блокируем кнопку после окончания
+
                         btn.disabled = true;
                         btn.textContent = '⚡ БОЙ ОКОНЧЕН';
-        
-                        } else {
+                    } else {
                         renderBattle();
-                        }
-                        } else {
-                        addLog('❌ ' + (data.error || 'Ошибка сервера'));
-                        }
-                    } catch (error) {
-                    console.error('Ошибка:', error);
-                    addLog('❌ Ошибка соединения');
-                    } finally {
-                    // Проверяем, не закончился ли бой
-                    const alivePlayers = Object.values(playerCards).filter(c => (c.is_alive !== undefined ? c.is_alive : c.health > 0));
-                    const aliveEnemies = Object.values(enemyCards).filter(c => (c.is_alive !== undefined ? c.is_alive : c.health > 0));
+                    }
+                } else {
+                    addLog('❌ ' + (data.error || 'Ошибка сервера'));
+                }
+            } catch (error) {
+                console.error('Ошибка:', error);
+                addLog('❌ Ошибка соединения');
+            } finally {
+                // Проверяем, не закончился ли бой
+                const alivePlayers = Object.values(playerCards).filter(c => c.is_alive !== false);
+                const aliveEnemies = Object.values(enemyCards).filter(c => c.is_alive !== false);
 
-                    if (alivePlayers > 0 && aliveEnemies > 0) {
+                if (alivePlayers.length > 0 && aliveEnemies.length > 0 && !data?.winner) {
                     btn.disabled = false;
                     btn.textContent = '⚡ СЛЕДУЮЩИЙ ХОД';
-                    } else {
-                    btn.textContent = '⚡ БОЙ ОКОНЧЕН';
-                    }
-                    }
-                    }
+                }
+            }
+        }
 
         async function autoBattle() {
             const autoBtn = document.getElementById('autoBattleBtn');
@@ -641,9 +598,7 @@
             autoBtn.disabled = true;
             turnBtn.disabled = true;
 
-            // Пока бой не закончен
             while (true) {
-                // Проверяем есть ли живые карты
                 const alivePlayers = Object.values(playerCards).filter(c => c.is_alive !== false);
                 const aliveEnemies = Object.values(enemyCards).filter(c => c.is_alive !== false);
 
@@ -665,137 +620,97 @@
                     const data = await response.json();
 
                     if (data.success) {
-                        // Анимируем каждый удар
-                        if (data.actions && data.actions.length > 0) {
-                            for (const action of data.actions) {
-                                // Определяем кто атакует
-                                const isPlayerAttacker = action.attacker_id > 0;
-
-                                // Анимируем удар
-                                await animateAttack(
-                                    action.attacker_id,
-                                    action.defender_id,
-                                    action.damage,
-                                    action.is_critical,
-                                    isPlayerAttacker  // Передаем флаг для цвета
-                                );
-                            }
-                        }
-
-                        // Обновляем состояние карт
                         data.player_cards.forEach(card => {
-                            if (playerCards[card.id]) {
-                                playerCards[card.id] = card;
-                            }
+                            if (playerCards[card.id]) playerCards[card.id] = card;
                         });
-
                         data.enemy_cards.forEach(card => {
-                            if (enemyCards[card.id]) {
-                                enemyCards[card.id] = card;
-                            }
+                            if (enemyCards[card.id]) enemyCards[card.id] = card;
                         });
 
                         currentTurn = data.turn;
                         document.getElementById('turn').textContent = currentTurn;
 
-                        // Добавляем логи
-                        if (data.log && data.log.length > 0) {
+                        if (data.log) {
                             for (const log of data.log) {
-                                let formattedLog = log;
-                                if (log.includes('атакует')) {
-                                    const isPlayerAttacker = data.actions?.find(a => 
-                                        a.attacker_name === log.split(' ')[1]
-                                    )?.attacker_id > 0;
-
-                                    if (isPlayerAttacker) {
-                                        formattedLog = '⚔️ [ТЫ] ' + log;
-                                    } else {
-                                        formattedLog = '👹 [ВРАГ] ' + log;
-                                    }
-                                }
-                                addLog(formattedLog);
+                                addLog(log);
                                 await new Promise(resolve => setTimeout(resolve, 200));
                             }
                         }
 
                         renderBattle();
 
-                        // Проверяем победителя
                         if (data.winner) {
                             if (data.winner === 'player') {
                                 addLog('🎉 ПОБЕДА!');
                                 if (data.rewards) {
-                                    addLog(`💰 Награды: ${data.rewards.coins} монет, ${data.rewards.dust} пыли, ${data.rewards.rating} рейтинга`);
+                                    addLog(`💰 Награды: +${data.rewards.coins}💰 +${data.rewards.dust}✨ +${data.rewards.rating}⭐`);
                                 }
+
                                 if (tg) {
-                                    try {
-                                        const resultData = JSON.stringify({ 
+                                    await fetch('/api/battle/result', {
+                                        method: 'POST',
+                                        headers: {
+                                            'Content-Type': 'application/json',
+                                            'X-Init-Data': tg.initData
+                                        },
+                                        body: JSON.stringify({
                                             action: 'battle_result',
                                             battle_id: battleId,
                                             result: 'win',
-                                            rewards: data.rewards 
-                                        });
-                                        console.log('📤 Sending data:', resultData);
-                                        tg.sendData(resultData);
-
-                                        // Отправляем также через HTTP запрос
-                                        fetch('/api/battle/result', {
-                                            method: 'POST',
-                                            headers: {'Content-Type': 'application/json'},
-                                            body: resultData
-                                        }).catch(e => console.error('HTTP backup failed:', e));
-
-                                    } catch (e) {
-                                        console.error('Send error:', e);
-                                    }
+                                            rewards: data.rewards
+                                        })
+                                    });
                                 }
-                                setTimeout(() => {
-                                    if (tg) tg.close();
-                                }, 500);
+
                             } else if (data.winner === 'enemy') {
+                                addLog('😔 Поражение...');
+                                if (data.rewards) {
+                                    addLog(`💰 Награды: +${data.rewards.coins}💰 +${data.rewards.dust}✨ ${data.rewards.rating}⭐`);
+                                }
+
                                 if (tg) {
-                                    try {
-                                        const resultData = JSON.stringify({ 
+                                    await fetch('/api/battle/result', {
+                                        method: 'POST',
+                                        headers: {
+                                            'Content-Type': 'application/json',
+                                            'X-Init-Data': tg.initData
+                                        },
+                                        body: JSON.stringify({
                                             action: 'battle_result',
                                             battle_id: battleId,
                                             result: 'lose',
-                                            rewards: data.rewards 
-                                        });
-                                        console.log('📤 Sending data:', resultData);
-                                        tg.sendData(resultData);
-
-                                        // Отправляем также через HTTP запрос
-                                        fetch('/api/battle/result', {
-                                            method: 'POST',
-                                            headers: {'Content-Type': 'application/json'},
-                                            body: resultData
-                                        }).catch(e => console.error('HTTP backup failed:', e));
-
-                                    } catch (e) {
-                                        console.error('Send error:', e);
-                                    }
+                                            rewards: data.rewards
+                                        })
+                                    });
                                 }
-                                setTimeout(() => {
-                                    if (tg) tg.close();
-                                }, 500);
                             }
+
+                            setTimeout(() => {
+                                if (tg) tg.close();
+                            }, 2000);
 
                             break;
                         }
-                        } else {
-                        addLog('❌ ' + (data.error || 'Ошибка сервера'));
-                        break;
-                        }
-                        } catch (error) {
-                        console.error('Ошибка:', error);
-                        addLog('❌ Ошибка соединения');
-                        break;
-                        }
-                        }
+                    }
+                } catch (error) {
+                    console.error('Ошибка:', error);
+                    addLog('❌ Ошибка соединения');
+                    break;
+                }
+            }
 
-                        autoBtn.disabled = false;
-                        turnBtn.disabled = false;
-                        }
+            autoBtn.disabled = false;
+            turnBtn.disabled = false;
+        }
+
+        function closeArena() {
+            if (tg && tg.close) {
+                // Просто закрываем без отправки данных
+                tg.close();
+            } else {
+                window.location.href = 'https://t.me/KamiDeckBot';
+            }
+        }
 
 
         async function animateAttack(attackerId, defenderId, damage, isCritical, isPlayerAttacker = true) {
@@ -897,42 +812,6 @@
                 📈 ${rewards.rating} рейтинга
             `;
             logContainer.appendChild(rewardsEl);
-        }
-
-        
-        function closeArena() {
-            if (tg && tg.close) {
-                // Пытаемся отправить сообщение о закрытии
-                try {
-                    tg.sendData(JSON.stringify({ 
-                        action: 'close_arena',
-                        battle_id: battleId 
-                    }));
-                    // Даем время на отправку
-                    setTimeout(() => {
-                        tg.close();
-                    }, 300);
-                } catch (e) {
-                    console.log('Ошибка отправки данных при закрытии');
-                    tg.close();
-                }
-            } else {
-                // Если не в Telegram, показываем сообщение и перенаправляем
-                if (confirm('Закрыть арену и вернуться в бота?')) {
-                    // Пытаемся отправить данные через Telegram (если есть)
-                    if (tg && tg.sendData) {
-                        tg.sendData(JSON.stringify({ 
-                            action: 'close_arena',
-                            battle_id: battleId 
-                        }));
-                        setTimeout(() => {
-                            tg.close();
-                        }, 300);
-                    }
-                    // Перенаправляем на специальный URL для закрытия
-                    window.location.href = 'https://t.me/KamiDeckBot'; // username бота
-                }
-            }
         }
 
         

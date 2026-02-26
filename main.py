@@ -466,13 +466,17 @@ async def create_test_battle(battle_id: str):
 
 @app.post("/api/battle/result")
 async def battle_result(request: Request):
-    """Запасной эндпоинт для результатов боя"""
+    """Запасной эндпоинт для результатов боя (использует initData)"""
     try:
-        data = await request.json()
-        logger.info(f"🔥 HTTP battle result received: {data}")
+        # Получаем initData из заголовка
+        init_data = request.headers.get("X-Init-Data")
+        logger.info(f"🔥 Battle result received with init_data: {init_data}")
 
-        # Можно обработать результат так же, как в handle_webapp_data
-        # Но лучше перенаправить в функцию обработки
+        data = await request.json()
+        logger.info(f"Data: {data}")
+
+        # Здесь можно проверить init_data на валидность
+        # Для этого нужно создать верификатор
 
         return {"success": True, "received": data}
     except Exception as e:
