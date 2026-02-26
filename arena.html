@@ -527,6 +527,27 @@
                 const data = await response.json();
 
                 if (data.success) {
+
+                    // 👇 ВАЖНО: сначала анимируем, потом обновляем данные
+                    if (data.actions && data.actions.length > 0) {
+                        for (const action of data.actions) {
+                            // Определяем, кто атакует (player или enemy)
+                            const isPlayerAttacker = action.attacker_id > 0;
+
+                            // Анимируем удар
+                            await animateAttack(
+                                action.attacker_id,
+                                action.defender_id,
+                                action.damage,
+                                action.is_critical,
+                                isPlayerAttacker
+                            );
+
+                            // Небольшая задержка между анимациями
+                            await new Promise(resolve => setTimeout(resolve, 200));
+                        }
+                    }
+                    
                     // Обновляем состояние карт
                     data.player_cards.forEach(card => {
                         if (playerCards[card.id]) {
@@ -584,6 +605,7 @@
                 const aliveEnemies = Object.values(enemyCards).filter(c => c.is_alive !== false);
 
                 if (alivePlayers.length === 0 || aliveEnemies.length === 0) {
+                    addLog('⚠️ Бой уже окончен');
                     break;
                 }
 
@@ -601,6 +623,24 @@
                     const data = await response.json();
 
                     if (data.success) {
+
+                        // 👇 Анимируем каждый удар
+                        if (data.actions && data.actions.length > 0) {
+                            for (const action of data.actions) {
+                                const isPlayerAttacker = action.attacker_id > 0;
+
+                                await animateAttack(
+                                    action.attacker_id,
+                                    action.defender_id,
+                                    action.damage,
+                                    action.is_critical,
+                                    isPlayerAttacker
+                                );
+
+                                await new Promise(resolve => setTimeout(resolve, 150));
+                            }
+                        }
+                        
                         data.player_cards.forEach(card => {
                             if (playerCards[card.id]) playerCards[card.id] = card;
                         });
@@ -637,16 +677,52 @@
         }
 
         function closeArena() {
-            if (tg && tg.close) {
-                // Просто закрываем без отправки данных
-                tg.close();
+            console.log('Closing arena...');
+
+            // Блокируем все кнопки чтобы избежать повторных нажатий
+            const nextBtn = document.getElementById('nextTurnBtn');
+            const autoBtn = document.getElementById('autoBattleBtn');
+
+            if (nextBtn) nextBtn.disabled = true;
+            if (autoBtn) autoBtn.disabled = true;
+
+            // Проверяем, открыто ли в Telegram
+            if (tg) {
+                try {
+                    // Для мобильных устройств
+                    if (typeof tg.close === 'function') {
+                        tg.close();
+                    } else {
+                        // Альтернативный способ
+                        window.location.href = 'https://t.me/KamiDeckBot';
+                    }
+                } catch (e) {
+                    console.error('Error closing via tg:', e);
+                    // Fallback
+                    window.location.href = 'https://t.me/KamiDeckBot';
+                }
             } else {
+                // Если не в Telegram, просто редирект
                 window.location.href = 'https://t.me/KamiDeckBot';
             }
         }
 
 
         async function endBattle(winner, rewards) {
+            // Блокируем кнопки
+            const nextBtn = document.getElementById('nextTurnBtn');
+            const autoBtn = document.getElementById('autoBattleBtn');
+            const closeBtn = document.querySelector('.button.close');
+
+            if (nextBtn) {
+                nextBtn.disabled = true;
+                nextBtn.textContent = '⚡ БОЙ ОКОНЧЕН';
+            }
+            if (autoBtn) {
+                autoBtn.disabled = true;
+                autoBtn.textContent = '🤖 БОЙ ОКОНЧЕН';
+            }
+            
             if (winner === 'player') {
                 addLog('🎉 ПОБЕДА!');
                 if (rewards) {
@@ -709,10 +785,10 @@
                 }
             }
 
-            // Закрываем через 2 секунды
-            setTimeout(() => {
-                if (tg) tg.close();
-            }, 2000);
+            // Меняем текст кнопки закрыть
+            if (closeBtn) {
+                closeBtn.textContent = '🏠 ВЫЙТИ';
+            }
         }
 
 
