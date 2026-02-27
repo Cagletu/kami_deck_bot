@@ -5,6 +5,10 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from datetime import datetime
 import logging
+import aiohttp
+import io
+from PIL import Image
+from aiogram.types import BufferedInputFile
 
 from database.base import AsyncSessionLocal
 from database.crud import get_user_or_create
@@ -84,24 +88,25 @@ async def quiz_menu(callback: types.CallbackQuery):
 async def quiz_start(callback: types.CallbackQuery, state: FSMContext):
     """Начать викторину"""
     try:
+        
         async with AsyncSessionLocal() as session:
-            # user = await get_user_or_create(session, callback.from_user.id)
+            user = await get_user_or_create(session, callback.from_user.id)
 
-            # # Проверяем еще раз (на случай если прошли через меню)
-            # can_take, minutes_left = await QuizManager.can_take_quiz(user)
+            # Проверяем еще раз (на случай если прошли через меню)
+            can_take, minutes_left = await QuizManager.can_take_quiz(user)
 
-            # if not can_take:
-            #     await callback.message.edit_text(
-            #         f"⏳ <b>Викторина ещё недоступна!</b>\n\n"
-            #         f"Следующая попытка через {minutes_left} минут.",
-            #         reply_markup=InlineKeyboardMarkup(
-            #             inline_keyboard=[
-            #                 [InlineKeyboardButton(text="« Назад", callback_data="back_to_main")]
-            #             ]
-            #         )
-            #     )
-            #     await callback.answer()
-            #     return
+            if not can_take:
+                await callback.message.edit_text(
+                    f"⏳ <b>Викторина ещё недоступна!</b>\n\n"
+                    f"Следующая попытка через {minutes_left} минут.",
+                    reply_markup=InlineKeyboardMarkup(
+                        inline_keyboard=[
+                            [InlineKeyboardButton(text="« Назад", callback_data="back_to_main")]
+                        ]
+                    )
+                )
+                await callback.answer()
+                return
 
             # Генерируем вопросы
             questions = await QuizManager.generate_quiz(session)
@@ -126,33 +131,51 @@ async def quiz_start(callback: types.CallbackQuery, state: FSMContext):
 
 async def show_question(message: types.Message, index: int, questions: list, state: FSMContext):
     """Показать вопрос викторины"""
-    question = questions[index]
+    try:
+        question = questions[index]
+        logger.info(f"Question: {question}")
+        text = f"""
+    <b>🎯 Вопрос {index + 1}/{len(questions)}</b>
+    <b>🃏 Карточка:</b> {question['card_name']}
+    
+    <b>❓ Из какого аниме этот персонаж?</b>
+        """
+        # Скачиваем изображение
+        async with aiohttp.ClientSession() as session:
+            async with session.get(question['image_url']) as resp:
+                img_data = await resp.read()
 
-    text = f"""
-<b>🎯 Вопрос {index + 1}/{len(questions)}</b>
+        # Открываем и обрезаем
+        img = Image.open(io.BytesIO(img_data))
+        width, height = img.size
 
-<b>🃏 Карточка:</b> {question['card_name']}
-<b>👤 Персонаж:</b> {question['character_name'] or 'Неизвестно'}
+        # Обрезаем нижние 18% где обычно название аниме
+        crop_height = int(height * 0.82)
+        cropped = img.crop((0, 0, width, crop_height))
 
-<b>❓ Из какого аниме этот персонаж?</b>
-    """
+        # Сохраняем в байты
+        bio = io.BytesIO()
+        cropped.save(bio, format='PNG')
+        bio.seek(0)
 
-    # Отправляем фото с клавиатурой
-    sent_msg = await message.answer_photo(
-        photo=question['image_url'],
-        caption=text,
-        reply_markup=quiz_options_keyboard(
-            question['options'],
-            index,
-            len(questions)
+        sent_msg = await message.answer_photo(
+            photo=BufferedInputFile(bio.read(), filename="quiz_card.png"),
+            caption=text,
+            reply_markup=quiz_options_keyboard(
+                question['options'],
+                index,
+                len(questions)
+            )
         )
-    )
+        
+        # Сохраняем ID сообщения, чтобы потом удалить
+        data = await state.get_data()
+        message_ids = data.get("message_ids", [])
+        message_ids.append(sent_msg.message_id)
+        await state.update_data(message_ids=message_ids)
 
-    # Сохраняем ID сообщения, чтобы потом удалить
-    data = await state.get_data()
-    message_ids = data.get("message_ids", [])
-    message_ids.append(sent_msg.message_id)
-    await state.update_data(message_ids=message_ids)
+    except Exception as e:
+        logger.exception(f"Ошибка quiz_start: {e}")
 
 
 @router.callback_query(F.data.startswith("quiz_answer_"), QuizStates.playing)
@@ -216,12 +239,18 @@ async def quiz_next(callback: types.CallbackQuery, state: FSMContext):
         questions = data["questions"]
         current = data["current_question"]
 
+        # ✅ Удаляем сообщение с кнопкой "ДАЛЬШЕ"
+        try:
+            await callback.message.delete()
+        except Exception as e:
+            logger.warning(f"Не удалось удалить сообщение с кнопкой: {e}")
+
         # Удаляем предыдущие сообщения
         for msg_id in data.get("message_ids", []):
             try:
                 await callback.bot.delete_message(callback.message.chat.id, msg_id)
             except:
-                pass
+                logger.warning(f"Не удалось удалить сообщение {msg_id}: {e}")
 
         # Очищаем список ID
         await state.update_data(message_ids=[])

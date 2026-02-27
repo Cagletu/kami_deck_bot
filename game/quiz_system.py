@@ -102,10 +102,15 @@ class QuizManager:
             .where(Card.anime_name.isnot(None))
             .where(Card.anime_name != exclude)
             .distinct()
-            .order_by(func.random())
-            .limit(count)
         )
-        names = [row[0] for row in result.all() if row[0]]
+        
+        all_names = [row[0] for row in result.all() if row[0]]
+
+        # Перемешиваем на Python стороне
+        random.shuffle(all_names)
+
+        # Берем нужное количество
+        names = all_names[:count]
 
         # Если недостаточно уникальных, добираем заглушками
         while len(names) < count:

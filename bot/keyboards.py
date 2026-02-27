@@ -357,18 +357,34 @@ def quiz_options_keyboard(options: List[str], question_index: int, total: int) -
     """Клавиатура с вариантами ответа для вопроса"""
     builder = InlineKeyboardBuilder()
 
-    # Добавляем варианты ответа (по 2 в ряд для компактности)
+    # Добавляем варианты ответа (по 1 в ряд для компактности)
     for i, option in enumerate(options):
-        # Обрезаем слишком длинные названия
-        display_text = option[:30] + "..." if len(option) > 30 else option
+        # ✅ ИСПРАВЛЕНО: Интеллектуальное обрезание с сохранением читаемости
+        if len(option) > 25:
+            # Разбиваем длинное название на части
+            words = option.split()
+            if len(words) > 1:
+                # Берем первые 2-3 слова
+                shortened = " ".join(words[:2])
+                if len(shortened) > 20:
+                    shortened = shortened[:18] + "…"
+            else:
+                # Если одно слово - обрезаем по символам
+                shortened = option[:20] + "…"
+        else:
+            shortened = option
+
+        # Добавляем эмодзи для наглядности (по желанию)
+        emoji = ["1️⃣", "2️⃣", "3️⃣", "4️⃣"][i] if i < 4 else f"{i+1}."
+
         builder.add(
             InlineKeyboardButton(
-                text=f"{i+1}. {display_text}",
+                text=f"{emoji} {shortened}",
                 callback_data=f"quiz_answer_{i}"
             )
         )
 
-    builder.adjust(2)  # По 2 кнопки в ряд
+    builder.adjust(1)  # По 1 кнопки в ряд
 
     # Добавляем информацию о прогрессе
     builder.row(

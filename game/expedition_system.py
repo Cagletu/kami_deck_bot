@@ -131,7 +131,7 @@ class ExpeditionManager:
     ) -> dict:
         """Рассчитать награды за экспедицию"""
         base_coins = duration_minutes // 5
-        base_dust = duration_minutes // 30
+        base_dust = duration_minutes // 20
 
         # Множитель за количество карт (1x, 2x, 3x)
         card_multiplier = len(card_ids)
