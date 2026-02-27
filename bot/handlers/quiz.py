@@ -85,23 +85,23 @@ async def quiz_start(callback: types.CallbackQuery, state: FSMContext):
     """Начать викторину"""
     try:
         async with AsyncSessionLocal() as session:
-            user = await get_user_or_create(session, callback.from_user.id)
+            # user = await get_user_or_create(session, callback.from_user.id)
 
-            # Проверяем еще раз (на случай если прошли через меню)
-            can_take, minutes_left = await QuizManager.can_take_quiz(user)
+            # # Проверяем еще раз (на случай если прошли через меню)
+            # can_take, minutes_left = await QuizManager.can_take_quiz(user)
 
-            if not can_take:
-                await callback.message.edit_text(
-                    f"⏳ <b>Викторина ещё недоступна!</b>\n\n"
-                    f"Следующая попытка через {minutes_left} минут.",
-                    reply_markup=InlineKeyboardMarkup(
-                        inline_keyboard=[
-                            [InlineKeyboardButton(text="« Назад", callback_data="back_to_main")]
-                        ]
-                    )
-                )
-                await callback.answer()
-                return
+            # if not can_take:
+            #     await callback.message.edit_text(
+            #         f"⏳ <b>Викторина ещё недоступна!</b>\n\n"
+            #         f"Следующая попытка через {minutes_left} минут.",
+            #         reply_markup=InlineKeyboardMarkup(
+            #             inline_keyboard=[
+            #                 [InlineKeyboardButton(text="« Назад", callback_data="back_to_main")]
+            #             ]
+            #         )
+            #     )
+            #     await callback.answer()
+            #     return
 
             # Генерируем вопросы
             questions = await QuizManager.generate_quiz(session)
