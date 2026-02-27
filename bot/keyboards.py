@@ -18,6 +18,7 @@ async def set_bot_commands(bot: Bot):
         BotCommand(command="/expedition", description="🏕️ Экспедиции"),
         BotCommand(command="/daily", description="🎁 Дейлик"),
         BotCommand(command="/arena", description="⚔️ Арена"),
+        BotCommand(command="/quiz", description="🤓 Викторина"),
         BotCommand(command="/help", description="❓ Помощь"),
     ]
     await bot.set_my_commands(commands)
@@ -27,15 +28,15 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
     """Главное меню"""
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="🃏 Коллекция", callback_data="back_to_collection"),
-        InlineKeyboardButton(text="📊 Профиль", callback_data="profile"),
-    )
-    builder.row(
         InlineKeyboardButton(text="📦 Открыть пачку", callback_data="open_pack"),
-        InlineKeyboardButton(text="🏕️ Экспедиции", callback_data="expedition"),
+        InlineKeyboardButton(text="🃏 Коллекция", callback_data="back_to_collection"),
     )
     builder.row(
         InlineKeyboardButton(text="⚔️ Арена", callback_data="open_arena"),
+        InlineKeyboardButton(text="🏕️ Экспедиции", callback_data="expedition"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="🎯 Викторина", callback_data="quiz_menu"),
     )
     return builder.as_markup()
 

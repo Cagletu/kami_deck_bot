@@ -18,6 +18,7 @@ from sqlalchemy import func, and_
 
 from sqlalchemy import select
 from game.arena_ranks import get_rank_display, get_next_rank_progress
+from bot.handlers.quiz import cmd_quiz
 
 from database.crud import (
     get_user_or_create,
@@ -86,6 +87,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
 /profile - Ваш профиль
 /collection - Коллекция карт
 /open_pack - Открыть пачку (100 монет)
+/arena - Сражение на арене
 /expedition - Экспедиции
 /daily - Ежедневная награда
 /help - Помощь по игре
@@ -1532,6 +1534,13 @@ async def collection_strongest(callback: types.CallbackQuery):
     except Exception as e:
         logger.exception(f"Ошибка collection_strongest: {e}")
         await callback.answer("❌ Ошибка", show_alert=True)
+
+
+@router.callback_query(F.data == "quiz_menu")
+async def quiz_menu_callback(callback: CallbackQuery):
+    """Обработчик кнопки викторины в меню"""
+    await cmd_quiz(callback.message)
+    await callback.answer()
 
 
 # 4. Хендлер просмотра карты (самый общий - ПОСЛЕ всех специфичных)

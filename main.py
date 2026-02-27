@@ -17,6 +17,7 @@ from database.base import engine, AsyncSessionLocal
 from bot.handlers.expedition import router as expedition_router
 from bot.main_handlers import router as main_router
 from bot.handlers.arena import router as arena_router
+from bot.handlers.quiz import router as quiz_router
 
 from bot.keyboards import set_bot_commands
 from sqlalchemy import text
@@ -70,6 +71,7 @@ dp = Dispatcher(storage=storage)
 dp.include_router(expedition_router)
 dp.include_router(main_router)
 dp.include_router(arena_router)
+dp.include_router(quiz_router)
 
 
 # ===== FASTAPI LIFESPAN =====
