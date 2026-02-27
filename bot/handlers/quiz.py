@@ -2,275 +2,294 @@
 from aiogram import Router, F, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from datetime import datetime
 import logging
-import random
-from datetime import datetime, timedelta
 
 from database.base import AsyncSessionLocal
 from database.crud import get_user_or_create
-from game.quiz_data import quiz_manager, QUIZ_REWARDS
+from database.models.user import User
+from game.quiz_system import QuizManager
+from bot.states import QuizStates
+from bot.keyboards import (
+    quiz_start_keyboard,
+    quiz_options_keyboard,
+    quiz_continue_keyboard,
+    quiz_result_keyboard
+)
 
 router = Router()
 logger = logging.getLogger(__name__)
 
 
-# Состояния для викторины
-class QuizStates(StatesGroup):
-    waiting_for_answer = State()
-    showing_result = State()
-
-
 @router.message(Command("quiz"))
 async def cmd_quiz(message: types.Message):
-    """Начать викторину"""
+    """Команда /quiz - вход в викторину"""
     try:
-        # Создаем клавиатуру с выбором сложности
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text="🟢 Лёгкая", callback_data="quiz_easy"),
-                InlineKeyboardButton(text="🟡 Средняя", callback_data="quiz_medium"),
-                InlineKeyboardButton(text="🔴 Сложная", callback_data="quiz_hard"),
-            ],
-            [
-                InlineKeyboardButton(text="🎲 Случайная", callback_data="quiz_random"),
-            ],
-            [
-                InlineKeyboardButton(text="« Назад", callback_data="back_to_main")
-            ]
-        ])
+        async with AsyncSessionLocal() as session:
+            user = await get_user_or_create(session, message.from_user.id)
 
-        text = """
-<b>🎯 АНИМЕ ВИКТОРИНА</b>
+            can_take, minutes_left = await QuizManager.can_take_quiz(user)
 
-Проверь свои знания аниме и получи награды!
+            if not can_take:
+                await message.answer(
+                    f"⏳ <b>Викторина ещё недоступна!</b>\n\n"
+                    f"Следующая попытка через {minutes_left} минут.\n\n"
+                    f"Возвращайтесь позже!",
+                    reply_markup=InlineKeyboardMarkup(
+                        inline_keyboard=[
+                            [InlineKeyboardButton(text="« Назад", callback_data="back_to_main")]
+                        ]
+                    )
+                )
+                return
 
-<b>🏆 Награды:</b>
-🟢 Лёгкая: 10💰 50✨
-🟡 Средняя: 25💰 100✨
-🔴 Сложная: 50💰 150✨
+            # Показываем стартовое меню
+            text = """
+<b>🎯 ВИКТОРИНА "УГАДАЙ АНИМЕ"</b>
 
-<b>🎁 Бонус:</b> +25💰 100✨ за все правильные ответы в раунде!
+<b>📋 Правила:</b>
+• Вам будет показано 5 карточек
+• Для каждой нужно выбрать аниме из 4 вариантов
+• 1 попытка в час
 
-Выбери сложность викторины:
-"""
+<b>💰 Награды:</b>
+• {coins} монет за каждый правильный ответ
+• {dust} пыли за каждый правильный ответ
+• Бонус {bonus_coins}💰 + {bonus_dust}✨ за все 5 правильных ответов!
 
-        await message.answer(text, reply_markup=keyboard)
+<b>🎮 Готовы проверить свои знания?</b>
+""".format(
+                coins=QuizManager.REWARDS["coins_per_correct"],
+                dust=QuizManager.REWARDS["dust_per_correct"],
+                bonus_coins=QuizManager.REWARDS["bonus_for_all_correct"]["coins"],
+                bonus_dust=QuizManager.REWARDS["bonus_for_all_correct"]["dust"]
+            )
+
+            await message.answer(text, reply_markup=quiz_start_keyboard())
 
     except Exception as e:
         logger.exception(f"Ошибка cmd_quiz: {e}")
         await message.answer("❌ Произошла ошибка. Попробуйте позже.")
 
 
-@router.callback_query(F.data.startswith("quiz_"))
-async def start_quiz(callback: CallbackQuery, state: FSMContext):
-    """Начать викторину с выбранной сложностью"""
+@router.callback_query(F.data == "quiz_menu")
+async def quiz_menu(callback: types.CallbackQuery):
+    """Меню викторины из главного меню"""
+    await cmd_quiz(callback.message)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "quiz_start")
+async def quiz_start(callback: types.CallbackQuery, state: FSMContext):
+    """Начать викторину"""
     try:
-        difficulty = callback.data.replace("quiz_", "")
+        async with AsyncSessionLocal() as session:
+            user = await get_user_or_create(session, callback.from_user.id)
 
-        if difficulty == "random":
-            difficulties = ["easy", "medium", "hard"]
-            difficulty = random.choice(difficulties)
+            # Проверяем еще раз (на случай если прошли через меню)
+            can_take, minutes_left = await QuizManager.can_take_quiz(user)
 
-        # Получаем случайный вопрос
-        question = quiz_manager.get_random_question(difficulty)
+            if not can_take:
+                await callback.message.edit_text(
+                    f"⏳ <b>Викторина ещё недоступна!</b>\n\n"
+                    f"Следующая попытка через {minutes_left} минут.",
+                    reply_markup=InlineKeyboardMarkup(
+                        inline_keyboard=[
+                            [InlineKeyboardButton(text="« Назад", callback_data="back_to_main")]
+                        ]
+                    )
+                )
+                await callback.answer()
+                return
 
-        if not question:
-            await callback.answer("❌ Нет вопросов для этой сложности", show_alert=True)
-            return
+            # Генерируем вопросы
+            questions = await QuizManager.generate_quiz(session)
 
-        # Сохраняем данные о викторине
-        await state.update_data(
-            current_question=question,
-            questions_left=4,  # Всего будет 5 вопросов
-            correct_answers=0,
-            difficulty=difficulty,
-            question_ids=[question["id"]]
-        )
+            # Сохраняем состояние
+            await state.update_data(
+                questions=questions,
+                current_question=0,
+                correct_answers=0,
+                message_ids=[]  # для хранения ID сообщений, чтобы не засорять чат
+            )
+            await state.set_state(QuizStates.playing)
 
-        # Отправляем первый вопрос
-        await send_question(callback.message, question, state)
-        await callback.answer()
+            # Показываем первый вопрос
+            await show_question(callback.message, 0, questions, state)
+            await callback.answer()
 
     except Exception as e:
-        logger.exception(f"Ошибка start_quiz: {e}")
-        await callback.answer("❌ Произошла ошибка", show_alert=True)
+        logger.exception(f"Ошибка quiz_start: {e}")
+        await callback.answer("❌ Ошибка", show_alert=True)
 
 
-async def send_question(message: types.Message, question: dict, state: FSMContext):
-    """Отправить вопрос пользователю"""
-
-    # Создаем клавиатуру с вариантами ответов
-    keyboard = []
-    for i, option in enumerate(question["options"]):
-        keyboard.append([
-            InlineKeyboardButton(
-                text=option,
-                callback_data=f"quiz_answer_{i}"
-            )
-        ])
-
-    # Добавляем кнопку отмены
-    keyboard.append([
-        InlineKeyboardButton(text="❌ Прервать викторину", callback_data="quiz_cancel")
-    ])
-
-    # Эмодзи для сложности
-    difficulty_emoji = {
-        "easy": "🟢",
-        "medium": "🟡",
-        "hard": "🔴"
-    }.get(question["difficulty"], "🎲")
+async def show_question(message: types.Message, index: int, questions: list, state: FSMContext):
+    """Показать вопрос викторины"""
+    question = questions[index]
 
     text = f"""
-{difficulty_emoji} <b>ВОПРОС {5 - len(question.get('options', []))}/5</b>
+<b>🎯 Вопрос {index + 1}/{len(questions)}</b>
 
-{question["question"]}
+<b>🃏 Карточка:</b> {question['card_name']}
+<b>👤 Персонаж:</b> {question['character_name'] or 'Неизвестно'}
 
-Выбери правильный ответ:
-"""
+<b>❓ Из какого аниме этот персонаж?</b>
+    """
 
-    await message.edit_text(
-        text,
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
+    # Отправляем фото с клавиатурой
+    sent_msg = await message.answer_photo(
+        photo=question['image_url'],
+        caption=text,
+        reply_markup=quiz_options_keyboard(
+            question['options'],
+            index,
+            len(questions)
+        )
     )
 
-    await state.set_state(QuizStates.waiting_for_answer)
+    # Сохраняем ID сообщения, чтобы потом удалить
+    data = await state.get_data()
+    message_ids = data.get("message_ids", [])
+    message_ids.append(sent_msg.message_id)
+    await state.update_data(message_ids=message_ids)
 
 
-@router.callback_query(F.data.startswith("quiz_answer_"), QuizStates.waiting_for_answer)
-async def process_answer(callback: CallbackQuery, state: FSMContext):
-    """Обработать ответ пользователя"""
+@router.callback_query(F.data.startswith("quiz_answer_"), QuizStates.playing)
+async def quiz_answer(callback: types.CallbackQuery, state: FSMContext):
+    """Обработка ответа на вопрос"""
     try:
         answer_index = int(callback.data.replace("quiz_answer_", ""))
 
         data = await state.get_data()
-        current_question = data.get("current_question")
-        correct_answers = data.get("correct_answers", 0)
-        questions_left = data.get("questions_left", 0)
-        question_ids = data.get("question_ids", [])
-        difficulty = data.get("difficulty", "easy")
+        questions = data["questions"]
+        current = data["current_question"]
+        correct_answers = data["correct_answers"]
 
-        is_correct = (answer_index == current_question["correct"])
+        question = questions[current]
+
+        # Проверяем правильность
+        is_correct = (answer_index == question["correct_index"])
+        correct_anime = question["anime_name"]
 
         if is_correct:
             correct_answers += 1
-            result_text = "✅ <b>Правильно!</b>"
+            feedback = "✅ <b>ПРАВИЛЬНО!</b>"
         else:
-            correct_option = current_question["options"][current_question["correct"]]
-            result_text = f"❌ <b>Неправильно!</b>\nПравильный ответ: {correct_option}"
+            feedback = f"❌ <b>НЕПРАВИЛЬНО!</b>\nПравильный ответ: {correct_anime}"
 
-        # Обновляем состояние
-        await state.update_data(
-            correct_answers=correct_answers,
-            questions_left=questions_left
+        # Обновляем данные
+        await state.update_data(correct_answers=correct_answers)
+
+        # Редактируем сообщение с результатом (без клавиатуры)
+        await callback.message.edit_caption(
+            caption=f"{callback.message.caption}\n\n{feedback}",
+            reply_markup=None
         )
 
-        if questions_left > 0:
-            # Берем следующий вопрос (исключая уже использованные)
-            next_question = quiz_manager.get_random_question(difficulty)
-            while next_question["id"] in question_ids:
-                next_question = quiz_manager.get_random_question(difficulty)
-
-            question_ids.append(next_question["id"])
-
-            await state.update_data(
-                current_question=next_question,
-                questions_left=questions_left - 1,
-                question_ids=question_ids
-            )
-
-            # Показываем результат и следующий вопрос
-            await callback.message.edit_text(
-                f"{result_text}\n\nЗагружаем следующий вопрос..."
-            )
-
-            # Отправляем следующий вопрос через небольшую задержку
-            import asyncio
-            await asyncio.sleep(1)
-            await send_question(callback.message, next_question, state)
-
+        # Если это был последний вопрос
+        if current + 1 >= len(questions):
+            # Показываем результат
+            await show_quiz_result(callback.message, correct_answers, len(questions), state)
         else:
-            # Викторина завершена
-            await end_quiz(callback.message, correct_answers, difficulty, state)
+            # Переходим к следующему вопросу
+            await state.update_data(current_question=current + 1)
+
+            # Отправляем кнопку "Дальше"
+            await callback.message.answer(
+                "➡️ Нажмите для продолжения",
+                reply_markup=quiz_continue_keyboard()
+            )
 
         await callback.answer()
 
     except Exception as e:
-        logger.exception(f"Ошибка process_answer: {e}")
-        await callback.answer("❌ Произошла ошибка", show_alert=True)
+        logger.exception(f"Ошибка quiz_answer: {e}")
+        await callback.answer("❌ Ошибка", show_alert=True)
 
 
-async def end_quiz(message: types.Message, correct_answers: int, difficulty: str, state: FSMContext):
-    """Завершить викторину и начислить награды"""
+@router.callback_query(F.data == "quiz_next", QuizStates.playing)
+async def quiz_next(callback: types.CallbackQuery, state: FSMContext):
+    """Переход к следующему вопросу"""
     try:
-        # Получаем пользователя
-        async with AsyncSessionLocal() as session:
-            user = await get_user_or_create(session, message.chat.id)
+        data = await state.get_data()
+        questions = data["questions"]
+        current = data["current_question"]
 
-            # Базовая награда за сложность
-            base_reward = QUIZ_REWARDS.get(difficulty, QUIZ_REWARDS["easy"])
+        # Удаляем предыдущие сообщения
+        for msg_id in data.get("message_ids", []):
+            try:
+                await callback.bot.delete_message(callback.message.chat.id, msg_id)
+            except:
+                pass
 
-            # Начисляем награды (по 20% за каждый правильный ответ)
-            reward_multiplier = correct_answers * 0.2  # 20% за каждый правильный ответ
-            coins_reward = int(base_reward["coins"] * (1 + reward_multiplier))
-            dust_reward = int(base_reward["dust"] * (1 + reward_multiplier))
+        # Очищаем список ID
+        await state.update_data(message_ids=[])
 
-            user.coins += coins_reward
-            user.dust += dust_reward
-
-            # Бонус за все правильные ответы
-            perfect_bonus = ""
-            if correct_answers == 5:
-                perfect = QUIZ_REWARDS["perfect"]
-                user.coins += perfect["coins"]
-                user.dust += perfect["dust"]
-                perfect_bonus = f"\n\n🎁 <b>БОНУС ЗА ИДЕАЛЬНЫЙ РАУНД!</b>\n+{perfect['coins']}💰 +{perfect['dust']}✨"
-
-            await session.commit()
-
-        # Формируем результат
-        result_text = f"""
-<b>🎯 ВИКТОРИНА ЗАВЕРШЕНА!</b>
-
-✅ Правильных ответов: {correct_answers}/5
-{'🏆 Отличный результат!' if correct_answers >= 4 else '📚 Можно лучше!'}
-
-<b>💰 Награды:</b>
-+{coins_reward}💰 монет
-+{dust_reward}✨ пыли
-{perfect_bonus}
-
-Выбери действие:
-"""
-
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text="🔄 Ещё раз", callback_data=f"quiz_{difficulty}"),
-                InlineKeyboardButton(text="🎲 Другая сложность", callback_data="quiz_random"),
-            ],
-            [
-                InlineKeyboardButton(text="🏠 В меню", callback_data="back_to_main")
-            ]
-        ])
-
-        await message.edit_text(result_text, reply_markup=keyboard)
-        await state.clear()
+        # Показываем следующий вопрос
+        await show_question(callback.message, current, questions, state)
+        await callback.answer()
 
     except Exception as e:
-        logger.exception(f"Ошибка end_quiz: {e}")
-        await message.edit_text("❌ Произошла ошибка при начислении наград")
+        logger.exception(f"Ошибка quiz_next: {e}")
+        await callback.answer("❌ Ошибка", show_alert=True)
 
 
-@router.callback_query(F.data == "quiz_cancel")
-async def cancel_quiz(callback: CallbackQuery, state: FSMContext):
-    """Прервать викторину"""
-    await state.clear()
-    await callback.message.edit_text(
-        "❌ Викторина прервана",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🏠 В меню", callback_data="back_to_main")]
-        ])
+async def show_quiz_result(message: types.Message, correct: int, total: int, state: FSMContext):
+    """Показать результат викторины"""
+
+    # Рассчитываем награды
+    rewards = QuizManager.calculate_rewards(correct)
+
+    # Обновляем пользователя в БД
+    async with AsyncSessionLocal() as session:
+        user = await get_user_or_create(session, message.chat.id)
+
+        # Начисляем награды
+        user.coins += rewards["coins"]
+        user.dust += rewards["dust"]
+        user.last_quiz_time = datetime.now()
+
+        await session.commit()
+
+    # Формируем текст результата
+    bonus_text = "🎉 <b>БОНУС ЗА ВСЕ ПРАВИЛЬНЫЕ!</b>\n" if rewards["bonus"] else ""
+
+    text = f"""
+<b>🏁 ВИКТОРИНА ЗАВЕРШЕНА!</b>
+
+📊 <b>Результат:</b> {correct}/{total} правильных ответов
+
+💰 <b>Награды:</b>
+• Монеты: +{rewards['coins']}💰
+• Пыль: +{rewards['dust']}✨
+{bonus_text}
+⏳ <b>Следующая попытка:</b> через 1 час
+
+✨ <b>Итоговый баланс:</b>
+{user.coins}💰 | {user.dust}✨
+    """
+
+    # Отправляем результат
+    await message.answer(
+        text,
+        reply_markup=quiz_result_keyboard(correct, total)
     )
-    await callback.answer()
+
+    await state.clear()
+
+
+@router.callback_query(F.data == "quiz_restart")
+async def quiz_restart(callback: types.CallbackQuery, state: FSMContext):
+    """Перезапустить викторину (если можно)"""
+    await quiz_start(callback, state)
+
+
+@router.callback_query(F.data == "quiz_again_locked")
+async def quiz_again_locked(callback: types.CallbackQuery):
+    """Заглушка для кнопки когда нельзя пройти"""
+    await callback.answer(
+        "⏳ Подождите 1 час до следующей викторины!",
+        show_alert=True
+    )
+    

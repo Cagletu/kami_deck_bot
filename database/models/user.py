@@ -48,6 +48,7 @@ class User(Base):
     created_at = Column(DateTime, server_default=func.now())
     last_active = Column(DateTime, server_default=func.now())
     last_daily_tasks = Column(DateTime, nullable=True)  # Когда брал дневные задания
+    last_quiz_time = Column(DateTime, nullable=True)
 
     def __repr__(self):
         return f"<User {self.telegram_id} ({self.username})>"

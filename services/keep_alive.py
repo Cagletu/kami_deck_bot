@@ -1,4 +1,4 @@
-# keep_alive.py
+# services/keep_alive.py
 """
 Скрипт для поддержания Replit онлайн через пинги
 """

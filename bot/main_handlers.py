@@ -1536,13 +1536,6 @@ async def collection_strongest(callback: types.CallbackQuery):
         await callback.answer("❌ Ошибка", show_alert=True)
 
 
-@router.callback_query(F.data == "quiz_menu")
-async def quiz_menu_callback(callback: CallbackQuery):
-    """Обработчик кнопки викторины в меню"""
-    await cmd_quiz(callback.message)
-    await callback.answer()
-
-
 # 4. Хендлер просмотра карты (самый общий - ПОСЛЕ всех специфичных)
 # 4. Хендлер просмотра карты (самый общий - ПОСЛЕ всех специфичных)
 # 4. Хендлер просмотра карты (самый общий - ПОСЛЕ всех специфичных)

@@ -339,3 +339,72 @@ def upgrade_card_keyboard(card_id: int) -> InlineKeyboardMarkup:
             ],
         ]
     )
+
+
+def quiz_start_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура для начала викторины"""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="🎯 НАЧАТЬ ВИКТОРИНУ", callback_data="quiz_start")
+    )
+    builder.row(
+        InlineKeyboardButton(text="« Назад", callback_data="back_to_main")
+    )
+    return builder.as_markup()
+
+
+def quiz_options_keyboard(options: List[str], question_index: int, total: int) -> InlineKeyboardMarkup:
+    """Клавиатура с вариантами ответа для вопроса"""
+    builder = InlineKeyboardBuilder()
+
+    # Добавляем варианты ответа (по 2 в ряд для компактности)
+    for i, option in enumerate(options):
+        # Обрезаем слишком длинные названия
+        display_text = option[:30] + "..." if len(option) > 30 else option
+        builder.add(
+            InlineKeyboardButton(
+                text=f"{i+1}. {display_text}",
+                callback_data=f"quiz_answer_{i}"
+            )
+        )
+
+    builder.adjust(2)  # По 2 кнопки в ряд
+
+    # Добавляем информацию о прогрессе
+    builder.row(
+        InlineKeyboardButton(
+            text=f"❓ Вопрос {question_index + 1}/{total}",
+            callback_data="noop"
+        )
+    )
+
+    return builder.as_markup()
+
+
+def quiz_continue_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура для продолжения после ответа"""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="➡️ ДАЛЬШЕ", callback_data="quiz_next")
+    )
+    return builder.as_markup()
+
+
+def quiz_result_keyboard(correct_answers: int, total: int) -> InlineKeyboardMarkup:
+    """Клавиатура после завершения викторины"""
+    builder = InlineKeyboardBuilder()
+
+    if correct_answers == total:
+        builder.row(
+            InlineKeyboardButton(text="🎉 ЕЩЁ РАЗ (через час)", callback_data="quiz_again_locked")
+        )
+    else:
+        builder.row(
+            InlineKeyboardButton(text="🔄 ПОПРОБОВАТЬ СНОВА", callback_data="quiz_restart")
+        )
+
+    builder.row(
+        InlineKeyboardButton(text="🏠 В ГЛАВНОЕ МЕНЮ", callback_data="back_to_main")
+    )
+
+    return builder.as_markup()
